@@ -101,8 +101,8 @@
     var ranged = /range|long|mortar|quickhack|anti-armor|siege|scout|drone/.test(r);
     var lv = unitLevel(u.name), lm = 1 + lv * 0.14;
     return {
-      hp: Math.round((260 + u.tier * 140) * lm),
-      atk: Math.round((60 + u.tier * 38) * lm),
+      hp: Math.round((260 + u.tier * 140) * lm * agg().hp),
+      atk: Math.round((60 + u.tier * 38) * lm * agg().atk),
       def: 12 + u.tier * 9,
       range: ranged ? 190 : 110,
       rate: ranged ? 900 : 700,
@@ -119,6 +119,29 @@
   function buildLevel(id) { return G.builds[id] || 0; }
   function buildCost(b) { return Math.round(220 * Math.pow(1.6, buildLevel(b.building_id))); }
   function unlockedUnitNames() { return D.units.map(function (u) { return u.name; }); }
+
+  function buildLv(name) {
+    var b = D.buildings.filter(function (x) { return x.name === name; })[0];
+    return b ? buildLevel(b.building_id) : 0;
+  }
+  function agg() {
+    var plate = G.shop.plate || 0, reactor = G.shop.reactor || 0,
+        armor = G.shop.armor || 0, hard = G.shop.hardpoint || 0;
+    return {
+      segMax: Math.round(SEG_MAX * (1 + 0.10 * plate + 0.08 * buildLv("Blast Barrier"))),
+      coreMax: Math.round(CORE_MAX * (1 + 0.05 * reactor + 0.06 * buildLv("Core Spire"))),
+      gateMax: Math.round(GATE_MAX * (1 + 0.06 * buildLv("Checkpoint Gate"))),
+      leak: Math.max(0.3, 1 - 0.09 * armor),
+      cap: 10 + hard * 2 + buildLv("Cybermod Bench"),
+      coin: 1 + 0.06 * buildLv("Scrap Yard"),
+      payout: 1 + 0.10 * buildLv("Credit Mint") + 0.08 * buildLv("Faction Hub"),
+      atk: 1 + 0.05 * buildLv("Circuit Foundry"),
+      hp: 1 + 0.06 * buildLv("Clone Bay"),
+      abil: 1 + 0.08 * buildLv("Data Vault"),
+      turrets: buildLv("Auto-Turret"),
+      rails: buildLv("Rail Cannon")
+    };
+  }
 
   var SHOP = [
     { id: "plate", name: "Reinforced Plate", desc: "+10% ring segment integrity", cost: [200, 400, 700, 1100, 1600] },
@@ -235,7 +258,8 @@
       ".oid{border:1px solid rgba(56,245,224,.2);background:linear-gradient(135deg,#0b171b,#070e11 60%,#0a1418);padding:12px;display:flex;gap:13px;align-items:center;margin-bottom:10px;position:relative;overflow:hidden}",
       ".oid .holo{width:94px;height:94px;flex:none;border:1px solid rgba(56,245,224,.45);border-radius:4px;display:grid;",
       "place-items:center;background:radial-gradient(circle,rgba(56,245,224,.16),transparent 70%);box-shadow:0 0 18px rgba(56,245,224,.3) inset}",
-      ".oid .holo img{width:58px;height:58px}",
+      ".oid .holo img{width:58px;height:58px}"
+      ,".oid .holo canvas{border-radius:3px}",
       ".oid .idn b{display:block;font-size:17px;letter-spacing:.06em;color:#f0fffd}",
       ".oid .lv{font-size:9px;letter-spacing:.18em;color:#7f99a0;margin:3px 0 5px}",
       ".oid .lv b{color:#38f5e0;font-size:9px}",
@@ -424,19 +448,19 @@
   function renderCamp() {
     var s = el("scr-camp");
     var segTotal = G.base.seg.reduce(function (a, b) { return a + b; }, 0);
-    var segMax = SEG_MAX * 6;
-    var missing = (segMax - segTotal) + (GATE_MAX - G.base.gates) + (CORE_MAX - G.base.core);
+    var A0 = agg();
+    var segMax = A0.segMax * 6, gateMax = A0.gateMax, coreMax = A0.coreMax;
+    var missing = (segMax - segTotal) + (gateMax - G.base.gates) + (coreMax - G.base.core);
     var repairCost = Math.ceil(missing / 1000 * 40);
     var html = '<div class="kick">FORWARD OPERATING BASE</div><h2 style="margin-bottom:10px">BASE CAMP</h2>' +
-      '<div class="basewrap" id="basevis">' +
-        '<div class="barcore"><img src="' + icon("ab-radioactive") + '"></div>' +
-      '</div>' +
+      '<div class="basewrap" id="basevis"><canvas id="camp3d" width="600" height="420" ' +
+        'style="width:100%;height:100%;display:block"></canvas></div>' +
       '<div class="barline"><span>RING SEGMENTS</span><span>' + money(segTotal) + ' / ' + money(segMax) + '</span></div>' +
       '<div class="track"><i style="width:' + clamp(segTotal / segMax * 100, 0, 100) + '%;background:#38f5e0"></i></div>' +
-      '<div class="barline"><span>BLAST GATES</span><span>' + money(G.base.gates) + ' / ' + money(GATE_MAX) + '</span></div>' +
-      '<div class="track"><i style="width:' + clamp(G.base.gates / GATE_MAX * 100, 0, 100) + '%;background:#8fd6ff"></i></div>' +
-      '<div class="barline"><span>CORE SPIRE</span><span>' + money(G.base.core) + ' / ' + money(CORE_MAX) + '</span></div>' +
-      '<div class="track"><i style="width:' + clamp(G.base.core / CORE_MAX * 100, 0, 100) + '%;background:#ff7b33"></i></div>' +
+      '<div class="barline"><span>BLAST GATES</span><span>' + money(G.base.gates) + ' / ' + money(gateMax) + '</span></div>' +
+      '<div class="track"><i style="width:' + clamp(G.base.gates / gateMax * 100, 0, 100) + '%;background:#8fd6ff"></i></div>' +
+      '<div class="barline"><span>CORE SPIRE</span><span>' + money(G.base.core) + ' / ' + money(coreMax) + '</span></div>' +
+      '<div class="track"><i style="width:' + clamp(G.base.core / coreMax * 100, 0, 100) + '%;background:#ff7b33"></i></div>' +
       '<div class="grid2" style="margin:12px 0">' +
         '<button id="do-repair">REPAIR ALL<small>' + (missing > 0 ? repairCost + " credits" : "already at full") + '</small></button>' +
         '<button data-go="upgrade">FORTIFY<small>permanent upgrades</small></button>' +
@@ -446,19 +470,17 @@
       '<button class="cta" data-go="battle">LAUNCH WAVE ' + pad(G.wave) + '</button>';
     s.innerHTML = html;
 
-    /* ring segments drawn around the core */
-    var vis = el("basevis");
-    var w = 230, h = 210;
-    G.base.seg.forEach(function (v, i) {
-      var ang = (i / 6) * Math.PI * 2 - Math.PI / 2;
-      var seg = document.createElement("div");
-      seg.className = "seg" + (v > 0 ? "" : " dead");
-      seg.style.left = (50 + Math.cos(ang) * 34) + "%";
-      seg.style.top = (50 + Math.sin(ang) * 34) + "%";
-      seg.style.transform = "translate(-50%,-50%) rotate(" + (ang * 180 / Math.PI + 90) + "deg)";
-      seg.title = "Segment " + (i + 1) + " · " + Math.round(v);
-      vis.appendChild(seg);
-    });
+    /* 3D base: core spire with live ring arcs */
+    var cv = el("camp3d");
+    if (cv && window.NW3D && window.NW3D.can3d) {
+      try { window.NW3D.campView(cv, G.base.seg); } catch (e) {}
+    } else if (cv) {
+      cv.style.display = "none";
+      var fallback = document.createElement("div");
+      fallback.className = "barcore";
+      fallback.innerHTML = '<img src="' + icon("ab-radioactive") + '">';
+      el("basevis").appendChild(fallback);
+    }
 
     var plots = el("plots");
     D.buildings.forEach(function (b) {
@@ -486,8 +508,9 @@
       if (missing <= 0) return toast("Base is at full strength");
       if (G.coins < repairCost) return toast("Need " + repairCost + " CR");
       G.coins -= repairCost;
-      G.base.seg = [SEG_MAX, SEG_MAX, SEG_MAX, SEG_MAX, SEG_MAX, SEG_MAX];
-      G.base.gates = GATE_MAX; G.base.core = CORE_MAX;
+      var mx = agg();
+      G.base.seg = [mx.segMax, mx.segMax, mx.segMax, mx.segMax, mx.segMax, mx.segMax];
+      G.base.gates = mx.gateMax; G.base.core = mx.coreMax;
       save(); renderCamp(); toast("Base repaired");
     };
     wire(el("scr-camp"));
@@ -627,7 +650,7 @@
           '<div><div class="ttl">CHARACTER INVENTORY</div><div class="ver">OPERATOR SHEET · v2.0.1</div></div>' +
           '<div class="cr">' + money(G.coins) + ' CR</div></div>' +
         '<div class="oid">' +
-          '<div class="holo"><img src="' + heroIcon(h) + '"></div>' +
+          '<div class="holo"><canvas class="holo3d" width="188" height="188" style="width:94px;height:94px;display:block"></canvas></div>' +
           '<div style="flex:1;min-width:0">' +
             '<div class="idn"><b>' + h.name.toUpperCase() + '</b></div>' +
             '<div class="lv">LEVEL <b>' + lv + '</b> · ' + h.class.toUpperCase() + ' · <span class="tag ' + rar[1] + '">' + rar[0] + '</span></div>' +
@@ -686,6 +709,10 @@
         '</div>' +
       '</div>';
 
+    var hc = s.querySelector(".holo canvas");
+    if (hc && window.NW3D && window.NW3D.can3d) {
+      try { window.NW3D.portrait(hc, h.class, h.tier); } catch (e) {}
+    }
     el("inv-back").onclick = function () { go("dash"); };
     el("inv-frames").onclick = function () { framesSheet(); };
     s.querySelectorAll("[data-go]").forEach(function (b) { b.onclick = function () { go(b.dataset.go); }; });
@@ -759,6 +786,8 @@
           '<b style="font-size:12px;color:#e6fbf8">' + m.name.toUpperCase() + '</b>' +
           '<span style="margin-left:auto;font-size:8px;letter-spacing:.14em;color:' + (sel ? "#38f5e0" : "#5d7a81") + '">' +
           (sel ? "SELECTED" : "SELECT") + '</span></div>' +
+        '<canvas class="mthumb" data-thumb="' + m.id + '" width="520" height="180" ' +
+          'style="width:100%;height:92px;display:block;border:1px solid rgba(56,245,224,.12);margin:7px 0"></canvas>' +
         '<div class="sub" style="margin:6px 0">' + m.note + '</div>' +
         '<div class="chips" style="margin-bottom:9px">' +
           '<span class="chip">' + m.lanes + ' LANE' + (m.lanes > 1 ? "S" : "") + '</span>' +
@@ -770,6 +799,13 @@
       '</div>';
     });
     s.innerHTML = html;
+    if (window.NW3D && window.NW3D.can3d) {
+      MAPS.forEach(function (m) {
+        var c = s.querySelector('[data-thumb="' + m.id + '"]');
+        if (!c) return;
+        try { window.NW3D.mapThumb(c, m.paths, m.id === G.map ? 0x38f5e0 : 0x1b6f7a); } catch (e) {}
+      });
+    }
     s.querySelectorAll("[data-map]").forEach(function (b) {
       b.onclick = function () {
         if (G.map === b.dataset.map) { go("battle"); return; }
@@ -784,10 +820,48 @@
     active: false, spawning: false, units: [], enemies: [], queue: [], spawnTimer: 0,
     mult: 1, armedUnit: null, armedAbility: null, last: 0, cooldowns: {}, kills: 0,
     over: false, paused: false, speed: 1, auto: true, deployT: 0, waveT: 2.0,
-    pts: [], hudT: 0, pushing: false, waveStart: 0, loopOn: false, allies: []
+    pts: [], hudT: 0, pushing: false, waveStart: 0, loopOn: false, allies: [], turrets: []
   };
   var CORE_R = 46;
+  var V3 = false;
   var laneIndex = {};
+
+
+  /* ---------------- 3D adapter (falls back to DOM sprites) ---------------- */
+  function ensure3D() {
+    if (V3) return true;
+    var N = window.NW3D;
+    if (!N || !N.can3d || !N.init) return false;
+    var stage = el("stage");
+    var canvas = el("c3d");
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      canvas.id = "c3d";
+      canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:manipulation";
+      stage.insertBefore(canvas, stage.firstChild);
+    }
+    var r = stage.getBoundingClientRect();
+    if (!N.init(canvas, Math.round(r.width), Math.round(r.height))) return false;
+    V3 = true;
+    var svg = el("paths"), arena = el("arena"), core = el("core");
+    if (svg) svg.style.display = "none";
+    if (arena) arena.style.display = "none";
+    if (core) core.style.display = "none";
+    return true;
+  }
+  function is3D(node) { return !!(V3 && node && node.isObject3D); }
+  function drop(node) {
+    if (!node) return;
+    if (is3D(node)) return window.NW3D.remove(node);
+    if (node.remove) node.remove();
+  }
+  function fxTracer(a, b, color) {
+    if (V3) return window.NW3D.tracer(a, b, color);
+    tracer(a, b);
+  }
+  function fxBurst(x, y, color) {
+    if (V3) return window.NW3D.burst(x, y, color);
+  }
 
   function buildPaths() {
     var st = el("stage").getBoundingClientRect();
@@ -812,11 +886,61 @@
     }
     var core = el("core");
     if (core) { core.style.left = cx + "px"; core.style.top = cy + "px"; }
+    if (ensure3D()) {
+      window.NW3D.resize(W, H);
+      window.NW3D.buildArena(B.pts);
+      window.NW3D.setRings(G.base.seg);
+    }
+  }
+
+  function buildTurrets() {
+    B.turrets.forEach(function (t) { drop(t.node); });
+    B.turrets = [];
+    var A0 = agg();
+    var specs = [];
+    for (var i = 0; i < A0.turrets; i++) specs.push({ heavy: false, lvl: A0.turrets });
+    for (var j = 0; j < A0.rails; j++) specs.push({ heavy: true, lvl: A0.rails });
+    var st = el("stage").getBoundingClientRect();
+    specs.forEach(function (sp, i) {
+      var ang = Math.PI / 4 + (i / Math.max(1, specs.length)) * Math.PI * 1.5;
+      var rad = 74;
+      var x = st.width / 2 + Math.cos(ang) * rad;
+      var y = st.height / 2 + Math.sin(ang) * rad;
+      var node = V3 ? window.NW3D.addTurret({ x: x, y: y, heavy: sp.heavy })
+                    : sprite("u", sp.heavy ? "ab-cannon" : "ab-turret", x, y);
+      B.turrets.push({ x: x, y: y, cool: 0, heavy: sp.heavy, level: sp.lvl, node: node,
+        rate: sp.heavy ? 1400 : 900, dmg: (sp.heavy ? 90 : 45) + 30 * sp.lvl, range: sp.heavy ? 230 : 190 });
+    });
+  }
+
+  function stepTurrets(dt) {
+    B.turrets.forEach(function (t) {
+      t.cool -= dt * 1000;
+      var tgt = null, bd = 1e9;
+      for (var i = 0; i < B.enemies.length; i++) {
+        var e = B.enemies[i], d = Math.hypot(e.x - t.x, e.y - t.y);
+        if (d <= t.range && d < bd) { bd = d; tgt = e; }
+      }
+      if (tgt && V3 && window.NW3D.aim && t.node) window.NW3D.aim(t.node, tgt.x, tgt.y);
+      if (!tgt || t.cool > 0) return;
+      t.cool = t.rate;
+      fxTracer(t, tgt, t.heavy ? 0xff7b33 : 0xffd24a);
+      if (t.heavy) {
+        B.enemies.forEach(function (e) {
+          if (Math.hypot(e.x - t.x, e.y - t.y) <= 70) { e.hp -= t.dmg * 0.7; place(e, e.x, e.y); }
+        });
+        fxBurst(tgt.x, tgt.y, 0xff7b33);
+      } else {
+        tgt.hp -= t.dmg;
+        place(tgt, tgt.x, tgt.y);
+      }
+    });
   }
 
   function enterBattle() {
     el("b-map").textContent = map().name.toUpperCase() + " · " + map().lanes + " LANE" + (map().lanes > 1 ? "S" : "");
     buildPaths();
+    buildTurrets();
     if (!B.loopOn) { B.loopOn = true; requestAnimationFrame(loop); }
     hud();
     if (!B.active && G.wave === 1) toast("Tap DEPLOY to place units, then LAUNCH");
@@ -838,10 +962,20 @@
   }
   function place(o, x, y) {
     o.x = x; o.y = y;
+    if (is3D(o.node)) {
+      window.NW3D.move(o.node, x, y);
+      window.NW3D.setHp(o.node, clamp(o.hp / o.hpMax, 0, 1), !!o.boss);
+      return;
+    }
     o.node.style.transform = "translate(" + x + "px," + y + "px)";
     o.node._bar.style.width = clamp(o.hp / o.hpMax * 100, 0, 100) + "%";
   }
+  function spawnUnitNode(u, x, y, ally) {
+    if (V3) return window.NW3D.addUnit({ x: x, y: y, cls: u.class, ally: !!ally });
+    return sprite(ally ? "u a" : "u", unitIconName(u), x, y);
+  }
   function tracer(a, b) {
+    if (V3) return window.NW3D.tracer(a, b);
     var dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
     var t = document.createElement("div");
     t.className = "tr";
@@ -865,7 +999,7 @@
       if (G.coins < st.cost) return toast("Need " + st.cost + " CR");
       G.coins -= st.cost;
     }
-    var node = sprite(ally ? "u a" : "u", unitIconName(u), x, y);
+    var node = spawnUnitNode(u, x, y, ally);
     var unit = { name: u.name, class: u.class, hp: st.hp, hpMax: st.hp, atk: st.atk, def: st.def,
       range: st.range, rate: st.rate, cool: 0, x: x, y: y, node: node, ally: !!ally };
     place(unit, x, y);
@@ -935,8 +1069,10 @@
     if (!pts.length) return;
     var e = entry.enemy, mult = B.mult;
     var hp = e.hp * (0.45 + mult * 0.75) * (entry.boss ? 2.6 : 1);
-    var node = sprite(entry.boss ? "e boss" : "e",
-      entry.boss ? "ab-boss-key" : (ENEMY_ICON[e.enemy_id] || "ab-bone-knife"), pts[0].x, pts[0].y);
+    var node = V3
+      ? window.NW3D.addEnemy({ x: pts[0].x, y: pts[0].y, boss: !!entry.boss })
+      : sprite(entry.boss ? "e boss" : "e",
+          entry.boss ? "ab-boss-key" : (ENEMY_ICON[e.enemy_id] || "ab-bone-knife"), pts[0].x, pts[0].y);
     var enemy = {
       name: e.name, boss: !!entry.boss, pts: pts,
       hp: hp, hpMax: hp,
@@ -956,6 +1092,7 @@
     var dt = Math.min(0.05, (ts - B.last) / 1000) * B.speed;
     B.last = ts;
     if (!B.paused && !B.over && current === "battle") step(dt);
+    if (V3 && current === "battle") window.NW3D.render();
     requestAnimationFrame(loop);
   }
 
@@ -973,6 +1110,8 @@
       if (!B.queue.length) B.spawning = false;
     }
 
+    stepTurrets(dt);
+
     /* squad allies hold their own lane */
     B.allies.forEach(function (a) {
       a.coins += dt * 9;
@@ -982,7 +1121,7 @@
 
     if (B.auto) {
       B.deployT -= dt;
-      if (B.deployT <= 0) { if (B.units.filter(function (u) { return !u.ally; }).length < 10) autoDeploy(); B.deployT = 1.0; }
+      if (B.deployT <= 0) { if (B.units.filter(function (u) { return !u.ally; }).length < agg().cap) autoDeploy(); B.deployT = 1.0; }
       if (!B.active) { B.waveT -= dt; if (B.waveT <= 0) { startWave(); B.waveT = 2.0; } }
       else B.waveT = 2.0;
     }
@@ -990,9 +1129,10 @@
     for (var i = B.enemies.length - 1; i >= 0; i--) {
       var e = B.enemies[i];
       if (e.hp <= 0) {
-        e.node.remove(); B.enemies.splice(i, 1); B.kills++; G.kills = (G.kills || 0) + 1;
-        var gain = Math.round((9 + e.hpMax / 40 + (e.boss ? 140 : 0)) * map().payout);
+        drop(e.node); B.enemies.splice(i, 1); B.kills++; G.kills = (G.kills || 0) + 1;
+        var gain = Math.round((9 + e.hpMax / 40 + (e.boss ? 140 : 0)) * map().payout * agg().coin);
         G.coins += gain;
+        fxBurst(e.x, e.y, e.boss ? 0xff7b33 : 0xffd24a);
         floater(e.x, e.y, "+" + gain);
         hud();
         continue;
@@ -1009,7 +1149,7 @@
         target.hp -= Math.max(3, e.atk * 0.8 - target.def * 0.35);
         place(target, target.x, target.y);
         if (target.hp <= 0) {
-          target.node.remove();
+          drop(target.node);
           B.units.splice(B.units.indexOf(target), 1);
         }
       }
@@ -1018,7 +1158,7 @@
       var goal = e.pts[e.pts.length - 1];
       var dx = goal.x - e.x, dy = goal.y - e.y, dist = Math.hypot(dx, dy);
       if (dist < 8) {
-        if (e.cool <= 0) { e.cool = 1000; hitBase(e.atk * 1.05); }
+        if (e.cool <= 0) { e.cool = 1000; hitBase(e.atk * 1.05 * agg().leak); }
       } else {
         var sp = e.speed * dt * (B.pushing ? 1.7 : 1);
         e.x += dx / dist * Math.min(sp, dist);
@@ -1048,7 +1188,7 @@
     if (B.active && !B.spawning && !B.enemies.length) {
       B.active = false;
       var w = D.waves.filter(function (x) { return Math.round(x.wave_number) === G.wave; })[0];
-      var bonus = Math.round((w ? w.reward_coins : 80) * map().payout);
+      var bonus = Math.round((w ? w.reward_coins : 80) * map().payout * agg().payout);
       G.coins += bonus;
       floater(el("stage").clientWidth / 2, el("stage").clientHeight / 2 - 60, "+" + bonus);
       if (G.wave >= 30) return endRun(true);
@@ -1093,6 +1233,7 @@
     if (hw) hw.textContent = pad(G.wave);
     if (hc) hc.textContent = money(G.coins);
     if (ha) ha.textContent = Math.round(G.aura || 0);
+    if (V3) window.NW3D.setRings(G.base.seg);
     var bar = el("core") && el("core").querySelector(".cb i");
     if (bar) bar.style.width = clamp(G.base.core / CORE_MAX * 100, 0, 100) + "%";
   }
@@ -1106,7 +1247,8 @@
     G.aura -= cost;
     B.cooldowns[a.ability_id] = now + (a.cooldown_seconds || 20) * 1000;
     var radius = a.tier >= 5 ? 200 : 110 + a.tier * 14;
-    var dmg = 95 + (a.tier || 1) * 70;
+    var dmg = Math.round((95 + (a.tier || 1) * 70) * agg().abil);
+    if (V3) window.NW3D.blast(x, y, radius);
     var ring = document.createElement("div");
     ring.style.cssText = "position:absolute;left:" + (x - radius / 2) + "px;top:" + (y - radius / 2) +
       "px;width:" + radius + "px;height:" + radius + "px;border:1px solid #38f5e0;border-radius:50%;pointer-events:none;opacity:.9";
@@ -1125,6 +1267,10 @@
     el("stage").addEventListener("click", function (ev) {
       var st = el("stage").getBoundingClientRect();
       var x = ev.clientX - st.left, y = ev.clientY - st.top;
+      if (V3 && window.NW3D.pick) {
+        var hit = window.NW3D.pick(ev.clientX, ev.clientY, st);
+        if (hit) { x = hit.x; y = hit.y; }
+      }
       if (Math.hypot(x - st.width / 2, y - st.height / 2) < CORE_R) return toast("That is the Core Spire");
       if (B.armedAbility) { var a = B.armedAbility; B.armedAbility = null; return fireAbility(a, x, y); }
       if (B.armedUnit) return deployAt(x, y);
@@ -1196,15 +1342,17 @@
     el("sheet").querySelector(".hd button").onclick = closeSheet;
     el("over").querySelector("button").onclick = function () {
       el("over").classList.remove("on");
-      B.enemies.forEach(function (e) { e.node.remove(); });
-      B.units.forEach(function (u) { u.node.remove(); });
+      B.enemies.forEach(function (e) { drop(e.node); });
+      B.units.forEach(function (u) { drop(u.node); });
       B.enemies = []; B.units = []; B.queue = []; B.kills = 0;
       B.over = false; B.active = false; B.spawning = false;
-      G.base = { seg: [SEG_MAX, SEG_MAX, SEG_MAX, SEG_MAX, SEG_MAX, SEG_MAX], gates: GATE_MAX, core: CORE_MAX };
+      var mx2 = agg();
+      G.base = { seg: [mx2.segMax, mx2.segMax, mx2.segMax, mx2.segMax, mx2.segMax, mx2.segMax], gates: mx2.gateMax, core: mx2.coreMax };
       if (G.wave > 1) G.wave = 1;
       save(); hud(); go("camp");
     };
     window.addEventListener("resize", function () { setTimeout(buildPaths, 80); });
+    window.addEventListener("orientationchange", function () { setTimeout(buildPaths, 240); });
   }
 
   function setupAllies() {
