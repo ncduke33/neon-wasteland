@@ -18,7 +18,13 @@ function el(id) { return document.getElementById(id); }
 function icon(name) {
   if (!name) return "";
   var map = window.NW_ICON_SRC;
-  if (map && map[name]) return map[name];
+  if (map) {
+    if (map[name]) return map[name];
+    var bare = name.replace(/\.svg$/, "");
+    if (map[bare]) return map[bare];
+    if (map["ab-" + bare]) return map["ab-" + bare];
+    if (map["hero-" + bare]) return map["hero-" + bare];
+  }
   return "assets/icons/" + name;
 }
 function pad(n) { return n < 10 ? "0" + n : String(n); }
