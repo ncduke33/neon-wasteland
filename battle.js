@@ -416,7 +416,9 @@
         }
         card.addEventListener("click", function () {
           if (!unit) return;
+          var was = B.armedUnit === unit;
           cards.forEach(function (c) { c.classList.remove("sel"); });
+          if (was) { B.armedUnit = null; return toast("Deployment cancelled"); }
           card.classList.add("sel");
           armUnit(unit);
         });
