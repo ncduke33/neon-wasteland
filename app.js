@@ -353,7 +353,7 @@ function renderShop() {
 function toast(msg) {
   var t = document.createElement("div");
   t.textContent = msg;
-  t.style.cssText = "position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#0e1216;border:1px solid #38f5e0;color:#38f5e0;padding:10px 16px;font:11px ui-monospace,monospace;letter-spacing:.12em;z-index:200";
+  t.style.cssText = "position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#0e1216;border:1px solid #38f5e0;color:#38f5e0;padding:10px 16px;font:11px ui-monospace,monospace;letter-spacing:.12em;z-index:200;pointer-events:none";
   document.body.appendChild(t);
   setTimeout(function () { t.remove(); }, 1600);
 }
