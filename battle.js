@@ -224,6 +224,62 @@
       ".tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:rgba(56,245,224,.2);margin-bottom:10px}",
       ".tabs button{background:#070e11;border:0;color:#6e8d94;font:9px ui-monospace,monospace;letter-spacing:.12em;padding:10px 2px}",
       ".tabs button.on{color:#38f5e0;background:#0b1f22}",
+      "/* operator sheet */",
+      ".oinv{position:relative}",
+      ".otop{display:flex;align-items:center;gap:8px;padding:6px 0 10px}",
+      ".otop .back{background:none;border:1px solid rgba(56,245,224,.25);color:#9fe9df;width:30px;height:26px;",
+      "border-radius:3px;font:12px ui-monospace,monospace}",
+      ".otop .ttl{font-size:10px;letter-spacing:.24em;color:#dfeef2}",
+      ".otop .ver{font-size:8px;color:#4d6a70;letter-spacing:.12em}",
+      ".otop .cr{margin-left:auto;font-size:10px;color:#ffd24a}",
+      ".oid{border:1px solid rgba(56,245,224,.2);background:linear-gradient(135deg,#0b171b,#070e11 60%,#0a1418);padding:12px;display:flex;gap:13px;align-items:center;margin-bottom:10px;position:relative;overflow:hidden}",
+      ".oid .holo{width:94px;height:94px;flex:none;border:1px solid rgba(56,245,224,.45);border-radius:4px;display:grid;",
+      "place-items:center;background:radial-gradient(circle,rgba(56,245,224,.16),transparent 70%);box-shadow:0 0 18px rgba(56,245,224,.3) inset}",
+      ".oid .holo img{width:58px;height:58px}",
+      ".oid .idn b{display:block;font-size:17px;letter-spacing:.06em;color:#f0fffd}",
+      ".oid .lv{font-size:9px;letter-spacing:.18em;color:#7f99a0;margin:3px 0 5px}",
+      ".oid .lv b{color:#38f5e0;font-size:9px}",
+      ".tag{display:inline-block;font-size:7px;letter-spacing:.18em;padding:2px 6px;border:1px solid;border-radius:2px}",
+      ".tag.leg{color:#ffb347;border-color:rgba(255,179,71,.6);background:rgba(255,179,71,.1)}",
+      ".tag.epi{color:#c07bff;border-color:rgba(192,123,255,.6);background:rgba(192,123,255,.1)}",
+      ".tag.rar{color:#38f5e0;border-color:rgba(56,245,224,.6);background:rgba(56,245,224,.1)}",
+      ".tag.com{color:#8fb0b6;border-color:rgba(143,176,182,.45)}",
+      ".xp{margin-top:7px}",
+      ".xp .bar{height:4px;background:#101a1e;border-radius:2px;overflow:hidden}",
+      ".xp .bar i{display:block;height:100%;background:linear-gradient(90deg,#38f5e0,#7dfff0)}",
+      ".xp span{display:block;font-size:7px;color:#5d7a81;letter-spacing:.1em;margin-top:3px}",
+      ".panel{border:1px solid rgba(56,245,224,.16);background:#070e11}",
+      ".panel h3{margin:0;padding:8px 9px;font-size:9px;letter-spacing:.2em;color:#38f5e0;border-bottom:1px solid rgba(56,245,224,.14);display:flex;align-items:center;gap:6px}",
+      ".panel h3 span{margin-left:auto;color:#63838a;letter-spacing:.08em}",
+      ".statline{display:flex;align-items:center;gap:7px;padding:6px 9px;border-bottom:1px solid rgba(255,255,255,.04)}",
+      ".statline:last-child{border-bottom:0}",
+      ".statline img{width:13px;height:13px;opacity:.8}",
+      ".statline .k{font-size:8px;letter-spacing:.1em;color:#7d9ba2;width:60px;flex:none}",
+      ".statline .v{font-size:10px;color:#eafcfb;margin-left:auto;min-width:34px;text-align:right}",
+      ".statline .pb{flex:1;height:3px;background:#101a1e;border-radius:2px;overflow:hidden;max-width:70px}",
+      ".statline .pb i{display:block;height:100%}",
+      ".bp{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;padding:8px}",
+      ".bp .cell{aspect-ratio:1;border:1px solid rgba(56,245,224,.13);background:#060c0f;display:grid;place-items:center;position:relative}",
+      ".bp .cell.full{border-color:rgba(56,245,224,.35);background:#0a1418}",
+      ".bp .cell img{width:19px;height:19px;opacity:.92}",
+      ".bp .cell b{position:absolute;right:2px;bottom:1px;font-size:7px;color:#ffd24a}",
+      ".bp .cell em{position:absolute;left:2px;top:1px;font-size:6px;color:#4d6a70;font-style:normal}",
+      ".wep{padding:9px}",
+      ".wep .wname{font-size:12px;color:#f0fffd;letter-spacing:.04em}",
+      ".wep .wrow{display:flex;gap:6px;align-items:center;margin:8px 0}",
+      ".wep .mod{width:32px;height:32px;border:1px solid rgba(56,245,224,.3);border-radius:3px;display:grid;place-items:center;background:#0a1418}",
+      ".wep .mod img{width:19px;height:19px}",
+      ".wep .mod.empty{border-style:dashed;border-color:rgba(255,255,255,.1)}",
+      ".wep .dmg{margin-left:auto;text-align:right;font-size:9px;color:#ffd24a;letter-spacing:.08em}",
+      ".wep .wimg{display:flex;align-items:center;justify-content:center;height:56px;background:radial-gradient(circle,rgba(255,179,71,.18),transparent 70%)}",
+      ".wep .wimg img{width:44px;height:44px}",
+      ".eq{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;padding:8px}",
+      ".eq .slot{border:1px solid rgba(56,245,224,.2);background:#060c0f;padding:7px;text-align:center}",
+      ".eq .slot span{display:block;font-size:7px;letter-spacing:.14em;color:#5d7a81;margin-bottom:4px}",
+      ".eq .slot img{width:20px;height:20px}",
+      ".eq .slot .nm{font-size:8px;color:#bfe0e4;margin-top:4px;line-height:1.3}",
+      ".eq .slot.empty{border-style:dashed;border-color:rgba(255,255,255,.1)}",
+      ".twocol{display:grid;grid-template-columns:1fr;gap:9px}",
       "/* base visual */",
       ".basewrap{position:relative;height:210px;border:1px solid rgba(56,245,224,.16);background:radial-gradient(circle at 50% 55%,#0c181c,#050a0c);margin-bottom:10px;overflow:hidden}",
       ".seg{position:absolute;width:10px;height:38px;background:#38f5e0;box-shadow:0 0 10px rgba(56,245,224,.6);border-radius:2px}",
@@ -518,37 +574,129 @@
   }
 
   /* ---------------- character inventory ---------------- */
+  function rarity(tier) {
+    if (tier >= 5) return ["LEGENDARY", "leg"];
+    if (tier === 4) return ["EPIC", "epi"];
+    if (tier === 3) return ["RARE", "rar"];
+    return ["STANDARD", "com"];
+  }
+  function level() { return 1 + Math.floor((G.kills || 0) / 25); }
+  function xpIn() { return ((G.kills || 0) % 25) * 80; }
+
+  function statLine(iconName, key, val, max, color) {
+    var pct = max > 0 ? clamp(val / max * 100, 0, 100) : 0;
+    return '<div class="statline"><img src="' + icon(iconName) + '"><span class="k">' + key + '</span>' +
+      '<span class="pb"><i style="width:' + pct + '%;background:' + color + '"></i></span>' +
+      '<span class="v">' + val + '</span></div>';
+  }
+
   function renderSquad() {
     var s = el("scr-squad");
     var h = hero();
-    var slotHtml = "";
-    for (var i = 0; i < 3; i++) {
-      var aid = G.slots[i];
-      var a = aid ? D.abilities.filter(function (x) { return x.ability_id === aid; })[0] : null;
-      slotHtml += '<div class="row" data-slot="' + i + '"><img src="' + (a ? abIcon(a) : icon("ab-circuit")) + '">' +
-        '<div class="m"><b>' + (a ? a.name : "Empty slot " + (i + 1)) + '</b>' +
-        '<span>' + (a ? a.type + " · T" + a.tier + " · " + a.cooldown_seconds + "s" : "tap to equip") + '</span></div>' +
-        '<button>' + (a ? "SWAP" : "EQUIP") + '</button></div>';
+    var rar = rarity(h.tier);
+    var lv = level();
+    var core = Math.round(G.base.core / CORE_MAX * 100);
+    var load = Math.round((G.abUnlocked.length * 1.2 + G.heroesUnlocked.length * 2) * 10) / 10;
+    function abById(id) { return id ? D.abilities.filter(function (a) { return a.ability_id === id; })[0] || null : null; }
+    var prim = abById(G.slots[0]);
+    var mods = [G.slots[1], G.slots[2], G.wild];
+    var slots = [
+      { key: "OPTIC", icon: abById(G.wild), alt: "hero-cyber-eye", pick: 3 },
+      { key: "DERMAL", icon: abById(G.slots[2]), alt: "hero-skull-mask", pick: 2 },
+      { key: "NEURAL", icon: abById(G.slots[1]), alt: "hero-cyber-eye", pick: 1 },
+      { key: "RIG", icon: prim, alt: "hero-briefcase", pick: 0 }
+    ];
+
+    /* backpack: unlocked abilities and hired frames as kit */
+    var items = [];
+    G.abUnlocked.forEach(function (id) {
+      var a = D.abilities.filter(function (x) { return x.ability_id === id; })[0];
+      if (a) items.push({ icon: AB_INDEX[a.ability_id], n: "T" + a.tier });
+    });
+    D.units.slice(0, 6).forEach(function (u) { items.push({ icon: unitIconName(u), n: "Lv" + unitLevel(u.name) }); });
+    var cells = "";
+    for (var i = 0; i < 25; i++) {
+      var it = items[i];
+      cells += '<div class="cell' + (it ? " full" : "") + '">' +
+        (it ? '<em>' + it.n + '</em><img src="' + icon(it.icon) + '">' : "") + '</div>';
     }
-    var w = G.wild ? D.abilities.filter(function (x) { return x.ability_id === G.wild; })[0] : null;
-    slotHtml += '<div class="row" data-slot="3"><img src="' + (w ? abIcon(w) : icon("ab-boss-key")) + '">' +
-      '<div class="m"><b>' + (w ? w.name : "Wildcard slot") + '</b>' +
-      '<span>' + (w ? "any class · off-affinity surcharge" : "tap to equip any unlocked ability") + '</span></div>' +
-      '<button>' + (w ? "SWAP" : "EQUIP") + '</button></div>';
 
-    s.innerHTML = '<div class="kick">CHARACTER INVENTORY</div><h2>OPERATOR</h2>' +
-      '<div class="row" style="margin-bottom:10px"><img src="' + heroIcon(h) + '">' +
-        '<div class="m"><b>' + h.name + '</b><span>' + h.class + ' · ' + h.role + ' · T' + h.tier + '</span></div></div>' +
-      '<div class="card"><div class="statrow" style="margin:0">' +
-        '<div class="stat"><b>' + h.base_hp + '</b><span>HP</span></div>' +
-        '<div class="stat"><b>' + h.base_attack + '</b><span>ATTACK</span></div>' +
-        '<div class="stat"><b>' + h.base_defense + '</b><span>DEFENSE</span></div></div>' +
-        '<div class="sub" style="margin-top:10px"><b style="color:#38f5e0">' + h.passive_name + '</b> · ' + h.passive_description + '</div>' +
-      '</div>' +
-      '<h2>HERO ROSTER</h2><div id="sq-heroes"></div>' +
-      '<h2>LOADOUT</h2>' + slotHtml +
-      '<h2>FRAME INVENTORY</h2><div id="sq-roster"></div>';
+    s.innerHTML =
+      '<div class="oinv">' +
+        '<div class="otop"><button class="back" id="inv-back">‹</button>' +
+          '<div><div class="ttl">CHARACTER INVENTORY</div><div class="ver">OPERATOR SHEET · v2.0.1</div></div>' +
+          '<div class="cr">' + money(G.coins) + ' CR</div></div>' +
+        '<div class="oid">' +
+          '<div class="holo"><img src="' + heroIcon(h) + '"></div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div class="idn"><b>' + h.name.toUpperCase() + '</b></div>' +
+            '<div class="lv">LEVEL <b>' + lv + '</b> · ' + h.class.toUpperCase() + ' · <span class="tag ' + rar[1] + '">' + rar[0] + '</span></div>' +
+            '<div class="xp"><div class="bar"><i style="width:' + (xpIn() / 2000 * 100) + '%"></i></div>' +
+            '<span>XP ' + xpIn().toLocaleString("en-US") + ' / 2,000</span></div>' +
+          '</div>' +
+        '</div>' +
 
+        '<div class="twocol">' +
+          '<div class="panel"><h3>OPERATOR STATS<span>' + h.role.toUpperCase() + '</span></h3>' +
+            statLine("ab-hearts", "HEALTH", h.base_hp, 1600, "#ff5d5d") +
+            statLine("ab-lightning-branches", "ENERGY", Math.round(G.aura || 0), 90, "#8fd6ff") +
+            statLine("ab-frozen-orb", "COOLANT", core, 100, "#38f5e0") +
+            statLine("ab-backpack", "LOAD", load, 48, "#ffd24a") +
+            statLine("ab-black-hand-shield", "ARMOR", h.base_defense, 140, "#c07bff") +
+            statLine("ab-sprint", "SPEED", h.base_speed, 130, "#7dffb0") +
+            statLine("ab-battery-pack", "STAMINA", 60 + h.tier * 6, 100, "#ffb347") +
+            statLine("ab-hidden", "STEALTH", h.class === "Netrunner" ? 92 : h.class === "Solo" ? 71 : 44, 100, "#8fd6ff") +
+          '</div>' +
+
+          '<div class="panel"><h3>PRIMARY SYSTEM<span>' + (prim ? "EQUIPPED" : "EMPTY") + '</span></h3>' +
+            '<div class="wep">' +
+              '<div class="wname">' + (prim ? prim.name.toUpperCase() : "NO SYSTEM EQUIPPED") + '</div>' +
+              '<div style="margin-top:4px">' + (prim ? '<span class="tag ' + (prim.tier >= 4 ? "leg" : "rar") + '">' +
+                (prim.tier >= 4 ? "LIMITED EDITION" : "STANDARD ISSUE") + '</span>' : "") + '</div>' +
+              '<div class="wimg"><img src="' + (prim ? abIcon(prim) : icon("ab-circuit")) + '"></div>' +
+              '<div class="wrow">' +
+                mods.map(function (id) {
+                  var a = abById(id);
+                  return '<div class="mod' + (a ? "" : " empty") + '">' + (a ? '<img src="' + abIcon(a) + '">' : "") + '</div>';
+                }).join("") +
+                '<div class="dmg">' + (prim ? 95 + prim.tier * 70 : 0) + ' DMG</div>' +
+              '</div>' +
+              '<div class="sub" style="font-size:8px">' + (prim ? prim.type + " · " + prim.cooldown_seconds + "s cooldown · " +
+                (prim.description || "") : "Open the loadout to equip a signature system.") + '</div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="panel"><h3>BACKPACK<span>' + items.length + ' / 25 SLOTS</span></h3><div class="bp">' + cells + '</div></div>' +
+
+          '<div class="panel"><h3>EQUIPMENT<span>TAP TO SWAP</span></h3><div class="eq">' +
+            slots.map(function (sl, i) {
+              var a = sl.icon;
+              var nm = a ? a.name : "empty";
+              return '<div class="slot' + (a ? "" : " empty") + '" data-eq="' + i + '">' +
+                '<span>' + sl.key + '</span><img src="' + (a ? abIcon(a) : icon(sl.alt)) + '">' +
+                '<div class="nm">' + nm.toUpperCase() + '</div></div>';
+            }).join("") +
+          '</div></div>' +
+        '</div>' +
+
+        '<h2 style="margin-top:14px">HERO ROSTER</h2><div id="sq-heroes"></div>' +
+        '<div class="grid2" style="margin-top:10px">' +
+          '<button id="inv-frames">FRAME INVENTORY<small>18 combat frames</small></button>' +
+          '<button data-go="upgrade">ACQUIRE SYSTEMS<small>upgrade portal</small></button>' +
+        '</div>' +
+      '</div>';
+
+    el("inv-back").onclick = function () { go("dash"); };
+    el("inv-frames").onclick = function () { framesSheet(); };
+    s.querySelectorAll("[data-go]").forEach(function (b) { b.onclick = function () { go(b.dataset.go); }; });
+    s.querySelectorAll("[data-eq]").forEach(function (tile) {
+      tile.onclick = function () {
+        var i = parseInt(tile.dataset.eq, 10);
+        pickAbility(slots[i].pick);
+      };
+    });
+
+    /* hero roster */
     var heroes = el("sq-heroes");
     D.heroes.forEach(function (x) {
       var owned = heroUnlocked(x.hero_id);
@@ -567,23 +715,22 @@
       };
       heroes.appendChild(row);
     });
+  }
 
-    s.querySelectorAll("[data-slot]").forEach(function (row) {
-      row.querySelector("button").onclick = function () { pickAbility(parseInt(row.dataset.slot, 10)); };
-    });
-
-    var roster = el("sq-roster");
+  function framesSheet() {
+    var html = "";
     D.units.slice().sort(function (a, b) { return a.tier - b.tier; }).forEach(function (u) {
       var st = unitStats(u);
-      roster.appendChild(rowEl(unitIconName(u), u.name + " · L" + unitLevel(u.name),
-        u.class + " · " + u.role + " · " + st.atk + " ATK / " + st.hp + " HP",
-        st.cost + " CR", true, function () { toast(u.name + " · " + (u.special_name || u.role)); }));
+      html += '<div class="row"><img src="' + icon(unitIconName(u)) + '">' +
+        '<div class="m"><b>' + u.name + ' · L' + unitLevel(u.name) + '</b><span>' + u.class + ' · ' + u.role +
+        ' · ' + st.atk + ' ATK / ' + st.hp + ' HP</span></div><button class="off">' + st.cost + ' CR</button></div>';
     });
+    openSheet("FRAME INVENTORY", html);
   }
 
   function pickAbility(slot) {
     var list = D.abilities.filter(function (a) { return abUnlocked(a.ability_id); });
-    var html = list.length ? "" : '<div class="empty">No abilities unlocked yet. Buy them in the Upgrade Portal.</div>';
+    var html = list.length ? "" : '<div class="empty">No systems unlocked yet. Buy them in the Upgrade Portal.</div>';
     list.forEach(function (a) {
       html += '<div class="row" data-pick="' + a.ability_id + '"><img src="' + abIcon(a) + '">' +
         '<div class="m"><b>' + a.name + ' · T' + a.tier + '</b><span>' + a.class + ' · ' + a.type + ' · ' +
@@ -843,7 +990,7 @@
     for (var i = B.enemies.length - 1; i >= 0; i--) {
       var e = B.enemies[i];
       if (e.hp <= 0) {
-        e.node.remove(); B.enemies.splice(i, 1); B.kills++;
+        e.node.remove(); B.enemies.splice(i, 1); B.kills++; G.kills = (G.kills || 0) + 1;
         var gain = Math.round((9 + e.hpMax / 40 + (e.boss ? 140 : 0)) * map().payout);
         G.coins += gain;
         floater(e.x, e.y, "+" + gain);
