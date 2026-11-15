@@ -135,7 +135,7 @@
       "html,body{margin:0;height:100%;background:#04070a;color:#dbeef2;overflow:hidden;",
       "font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}",
       "#app{position:fixed;inset:0;display:flex;flex-direction:column;background:#04070a}",
-      ".scr{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none;padding:14px 14px 84px}",
+      ".scr{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none;padding:14px 14px calc(84px + env(safe-area-inset-bottom))}",
       ".scr.on{display:block}",
       ".scr.battle{padding:0;display:none}",
       ".scr.battle.on{display:flex;flex-direction:column}",
@@ -154,7 +154,7 @@
       ".stat{border:1px solid rgba(56,245,224,.14);padding:9px;background:#060c0f}",
       ".stat b{display:block;font-size:16px;color:#ffd24a}",
       ".stat span{font-size:8px;letter-spacing:.16em;color:#5c7b82}",
-      "#nav{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,1fr);",
+      "#nav{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,1fr);padding-bottom:env(safe-area-inset-bottom);",
       "background:rgba(5,11,13,.98);border-top:1px solid rgba(56,245,224,.22);z-index:70}",
       "#nav button{background:none;border:0;color:#5f8b91;font:9px ui-monospace,monospace;letter-spacing:.1em;padding:10px 2px} ",
       "#nav button.on{color:#38f5e0;box-shadow:inset 0 2px 0 #38f5e0}",
@@ -195,12 +195,12 @@
       "#banner.on{opacity:1}",
       "#banner b{display:block;font-size:18px;letter-spacing:.24em;color:#38f5e0}",
       "#banner span{font-size:9px;letter-spacing:.18em;color:#7fb9b3}",
-      "#b-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;border-top:1px solid rgba(56,245,224,.2);background:rgba(56,245,224,.16);margin-bottom:44px}",
+      "#b-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;border-top:1px solid rgba(56,245,224,.2);background:rgba(56,245,224,.16);margin-bottom:calc(56px + env(safe-area-inset-bottom))}",
       "#b-bar button{background:#070e11;border:0;color:#8fd6ff;font:10px ui-monospace,monospace;letter-spacing:.1em;padding:13px 2px}",
       "#b-bar button small{display:block;font-size:8px;color:#4d6a70;margin-top:3px}",
       "#b-bar #launch{background:#13261f;color:#7dffb0}",
       "/* sheets */",
-      "#sheet{position:fixed;left:0;right:0;bottom:0;max-height:74vh;background:#060d10;border-top:1px solid #38f5e0;",
+      "#sheet{position:fixed;left:0;right:0;bottom:0;max-height:74vh;padding-bottom:env(safe-area-inset-bottom);background:#060d10;border-top:1px solid #38f5e0;",
       "transform:translateY(103%);transition:transform .2s ease;z-index:80;display:flex;flex-direction:column}",
       "#sheet.on{transform:translateY(0)}",
       "#sheet .hd{display:flex;align-items:center;padding:9px 12px;border-bottom:1px solid rgba(56,245,224,.15)}",
@@ -279,8 +279,8 @@
     battle.innerHTML =
       '<div id="b-top">' +
         '<span style="font-size:9px;letter-spacing:.18em;color:#38f5e0" id="b-map">MEGABLOCK CORE</span>' +
-        '<span class="hud"><span>W<b id="h-wave">01</b></span><span>CR<b id="h-coins">0</b></span>' +
-        '<span class="au">AU<b id="h-aura">0</b></span></span>' +
+        '<span class="hud"><span>W<b id="h-wave">01</b></span><span>H<b id="h-foes">0</b></span>' +
+        '<span>CR<b id="h-coins">0</b></span><span class="au">AU<b id="h-aura">0</b></span></span>' +
         '<div class="ctrl"><button id="c-pause">II</button><button id="c-speed">1x</button>' +
         '<button id="c-auto" class="on">AUTO</button></div>' +
       '</div>' +
@@ -813,6 +813,7 @@
   }
 
   function step(dt) {
+    G.aura = Math.min(90, (G.aura || 0) + dt * 1.4);
     B.pushing = B.active && (Date.now() - B.waveStart) / 1000 > 34;
 
     if (B.spawning) {
@@ -940,7 +941,8 @@
   }
 
   function hud() {
-    var hw = el("h-wave"), hc = el("h-coins"), ha = el("h-aura");
+    var hw = el("h-wave"), hc = el("h-coins"), ha = el("h-aura"), hf = el("h-foes");
+    if (hf) hf.textContent = B.enemies.length + B.queue.length;
     if (hw) hw.textContent = pad(G.wave);
     if (hc) hc.textContent = money(G.coins);
     if (ha) ha.textContent = Math.round(G.aura || 0);
