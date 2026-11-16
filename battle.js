@@ -155,13 +155,17 @@
     var s = document.createElement("style");
     s.textContent = [
       "#nw{display:none!important}",
-      "html,body{margin:0;height:100%;background:#04070a;color:#dbeef2;overflow:hidden;",
+      "html,body{margin:0;min-height:100%;background:#04070a;color:#dbeef2;overflow-x:hidden;overflow-y:auto;"
+      ,"html{-webkit-text-size-adjust:100%}"
+      ,"body{touch-action:pan-y pinch-zoom;overscroll-behavior-y:auto;-webkit-overflow-scrolling:touch}"
+      ,"body.locked{overflow:hidden;height:100dvh;touch-action:pan-y}",
       "font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}",
-      "#app{position:fixed;inset:0;display:flex;flex-direction:column;background:#04070a}",
-      ".scr{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none;padding:14px 14px calc(84px + env(safe-area-inset-bottom))}",
+      "#app{position:relative;min-height:100dvh;display:flex;flex-direction:column;background:#04070a}"
+      ,"body.locked #app{height:100dvh;min-height:0}",
+      ".scr{flex:1 0 auto;display:none;padding:14px 14px calc(92px + env(safe-area-inset-bottom));touch-action:pan-y pinch-zoom}",
       ".scr.on{display:block}",
-      ".scr.battle{padding:0;display:none}",
-      ".scr.battle.on{display:flex;flex-direction:column}",
+      ".scr.battle{padding:0;display:none;touch-action:pan-y}",
+      ".scr.battle.on{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}",
       "h1{margin:0;font-size:31px;line-height:.95;letter-spacing:.02em;color:#eafcff}",
       "h2{margin:0 0 10px;font-size:11px;letter-spacing:.22em;color:#38f5e0;font-weight:600}",
       ".kick{font-size:9px;letter-spacing:.34em;color:#ff7b33;margin-bottom:8px}",
@@ -388,6 +392,8 @@
   var current = "dash";
   function go(scr) {
     current = scr;
+    if (document.body) document.body.classList.toggle("locked", scr === "battle");
+    try { window.scrollTo(0, 0); } catch (e) {}
     ["dash", "camp", "battle", "upgrade", "squad", "maps"].forEach(function (k) {
       var e = el("scr-" + k);
       if (e) e.classList.toggle("on", k === scr);
