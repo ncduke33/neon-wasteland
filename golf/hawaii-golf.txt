@@ -57,7 +57,13 @@ function parseNotes(r) {
   var p = m[2].split("/").map(function (x) { return parseInt(x, 10); });
   if (!s.length || !p.length || s.length !== p.length) return null;
   for (var i = 0; i < s.length; i++) { if (isNaN(s[i]) || isNaN(p[i])) return null; }
-  return { scores: s, pars: p };
+  var holes = null;
+  var hm = String(r.notes).match(/\[holes\s+([0-9]+(?:[ ,]+[0-9]+)*)\]/i);
+  if (hm) {
+    holes = hm[1].split(/[ ,]+/).map(function (x) { return parseInt(x, 10); });
+    if (holes.length !== s.length) holes = null;
+  }
+  return { scores: s, pars: p, holes: holes };
 }
 function sum(a) { var t = 0; for (var i = 0; i < a.length; i++) t += (a[i] || 0); return t; }
 function sumSlice(a, from, to) { var t = 0; for (var i = from; i < to && i < a.length; i++) t += (a[i] || 0); return t; }
@@ -115,14 +121,11 @@ function blankDraft(data) {
 
 function buildCard(data) {
   var w = new ListWidget();
-  var cream = new Color("#f3e6bd"), light = new Color("#d7e6d9"), dim = new Color("#9bb7a4");
-  var plusCol = new Color("#1f7a4a"), minusCol = new Color("#14372a");
-  var paper = new Color("#f8f4e7");
-  var g = new LinearGradient();
-  g.colors = [new Color("#12492c"), new Color("#08301c")];
-  g.locations = [0, 1];
-  w.backgroundGradient = g;
-  w.setPadding(10, 14, 10, 14);
+  // paper scorecard look
+  var bg = new Color("#f7f2e3"), ink = new Color("#14321f"), soft = new Color("#6b7a63");
+  var green = new Color("#1f7a4a"), gold = new Color("#f0d97a"), softBtn = new Color("#e2ddc8");
+  w.backgroundColor = bg;
+  w.setPadding(12, 14, 10, 14);
 
   var st = data ? data.stats : null;
   var rounds = (data && data.rounds) ? data.rounds : [];
@@ -130,7 +133,7 @@ function buildCard(data) {
   if (!draft.scores) draft.scores = [];
   if (!draft.pars) draft.pars = [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4];
 
-  // No round in progress yet: mirror the last saved card so it is not a blank screen.
+  // No round in progress: mirror the last saved card.
   var preview = !!draft.preview && !(draft.scores && draft.scores.length);
   var shownScores = draft.scores || [];
   var courseName = draft.course;
@@ -139,7 +142,13 @@ function buildCard(data) {
     var pn = parseNotes(r0);
     var hs = (r0.holeScores && r0.holeScores.length) ? r0.holeScores : (pn ? pn.scores : null);
     if (hs && hs.length) {
-      shownScores = hs;
+      if (pn && pn.holes) {
+        var mapped = [];
+        for (var mi = 0; mi < pn.holes.length; mi++) mapped[pn.holes[mi] - 1] = hs[mi];
+        shownScores = mapped;
+      } else {
+        shownScores = hs;
+      }
       courseName = r0.course;
       if (pn && pn.pars) { var pp = draft.pars.slice(0); for (var pi = 0; pi < pn.pars.length && pi < 18; pi++) pp[pi] = pn.pars[pi]; draft.pars = pp; }
     }
@@ -152,72 +161,62 @@ function buildCard(data) {
   var par = draft.pars[idx] || 4;
   var score = (shownScores[idx] === undefined || shownScores[idx] === null) ? null : shownScores[idx];
 
-  // how far the round has actually got, and how it stands against par on played holes
-  var thru = 0, tot = 0, parPlayed = 0, played = 0;
+  var tot = 0, parPlayed = 0, played = 0;
   for (var i = 0; i < 18; i++) {
     var sv = shownScores[i];
     if (sv === undefined || sv === null) continue;
-    if (i === thru) { thru = i + 1; }
     tot += sv; parPlayed += (draft.pars[i] || 4); played++;
   }
 
-  // row 1: name + course progress
+  // row 1: title + course count
   var r1 = w.addStack(); r1.layoutHorizontally(); r1.centerAlignContent();
-  wp(r1, "HAWAII GOLF", 11, cream, true);
+  wp(r1, "HAWAII GOLF", 11, ink, true);
   r1.addSpacer();
-  if (st) wp(r1, st.coursesPlayed + "/" + st.coursesTotal + " HI", 8.5, dim, true);
-  w.addSpacer(3);
+  if (st) wp(r1, st.coursesPlayed + "/" + st.coursesTotal + " HI", 8.5, soft, true);
+  w.addSpacer(5);
 
   // row 2: course + standing
   var r2 = w.addStack(); r2.layoutHorizontally(); r2.centerAlignContent();
-  var ct = wp(r2, courseName || "Pick a course", 10, paper, true);
+  var ct = wp(r2, courseName || "Pick a course", 11, ink, true);
   ct.lineLimit = 1; ct.minimumScaleFactor = 0.6;
   r2.addSpacer();
-  var stand = played ? (tot + "  " + sign(tot - parPlayed)) : "no scores yet";
-  wp(r2, stand, 10, played ? cream : dim, true);
-  w.addSpacer(4);
-
-  // row 3: which hole + its par
-  var r3 = w.addStack(); r3.layoutHorizontally(); r3.centerAlignContent();
-  wp(r3, "HOLE " + hole + " OF 18", 9, dim, true);
-  r3.addSpacer();
-  wp(r3, "PAR " + par, 9, dim, true);
-  w.addSpacer(2);
-
-  // row 4: the one hole, with its arrows
-  var big = w.addStack(); big.layoutHorizontally(); big.centerAlignContent(); big.spacing = 0;
-
-  var minus = big.addStack();
-  minus.backgroundColor = minusCol; minus.cornerRadius = 12;
-  minus.size = new Size(52, 42);
-  minus.centerAlignContent();
-  var mt = wp(minus, "-", 26, light, true, true);
-  minus.url = selfURL("bump=" + hole + "&d=-1&hole=" + hole);
-
-  big.addSpacer();
-
-  var mid = big.addStack(); mid.layoutVertically(); mid.centerAlignContent();
-  wp(mid, score === null ? "-" : String(score), 40, score === null ? dim : paper, true, true);
-  wp(mid, score === null ? "tap + to score" : (score === par ? "even" : (score < par ? (par - score) + " under" : (score - par) + " over")), 8.5, dim, false, true);
-
-  big.addSpacer();
-
-  var plus = big.addStack();
-  plus.backgroundColor = plusCol; plus.cornerRadius = 12;
-  plus.size = new Size(52, 42);
-  plus.centerAlignContent();
-  var pt = wp(plus, "+", 26, Color.white(), true, true);
-  plus.url = selfURL("bump=" + hole + "&d=1&hole=" + hole);
+  wp(r2, played ? (tot + "  " + sign(tot - parPlayed)) : "no scores yet", 11, played ? green : soft, true);
   w.addSpacer(6);
 
-  // row 5: navigation + save + full view
-  var r5 = w.addStack(); r5.layoutHorizontally(); r5.centerAlignContent(); r5.spacing = 6;
-  chip(r5, "< HOLE", cream, minusCol, 8.5, selfURL("hole=" + (hole > 1 ? hole - 1 : 18)), 8);
-  chip(r5, "HOLE >", cream, minusCol, 8.5, selfURL("hole=" + (hole < 18 ? hole + 1 : 1)), 8);
-  r5.addSpacer();
-  chip(r5, "SAVE", Color.white(), new Color("#1f7a4a"), 8.5, selfURL("save=1"), 8);
-  chip(r5, "FULL CARD", cream, new Color("#1f7a4a"), 8.5, selfURL("card=1"), 8);
+  // row 3: hole + par
+  var r3 = w.addStack(); r3.layoutHorizontally(); r3.centerAlignContent();
+  wp(r3, "HOLE " + hole + " OF 18", 9, soft, true);
+  r3.addSpacer();
+  wp(r3, "PAR " + par, 9, soft, true);
   w.addSpacer(3);
+
+  // row 4: the hole, with its arrows
+  var big = w.addStack(); big.layoutHorizontally(); big.centerAlignContent();
+  var minus = big.addStack();
+  minus.backgroundColor = softBtn; minus.cornerRadius = 12;
+  minus.size = new Size(52, 42); minus.centerAlignContent();
+  wp(minus, "-", 26, ink, true, true);
+  minus.url = selfURL("bump=" + hole + "&d=-1&hole=" + hole);
+  big.addSpacer();
+  var mid = big.addStack(); mid.layoutVertically(); mid.centerAlignContent();
+  wp(mid, score === null ? "-" : String(score), 40, score === null ? soft : ink, true, true);
+  wp(mid, score === null ? "tap to score" : (score === par ? "even par" : (score < par ? (par - score) + " under" : (score - par) + " over")), 9, soft, false, true);
+  big.addSpacer();
+  var plus = big.addStack();
+  plus.backgroundColor = green; plus.cornerRadius = 12;
+  plus.size = new Size(52, 42); plus.centerAlignContent();
+  wp(plus, "+", 26, Color.white(), true, true);
+  plus.url = selfURL("bump=" + hole + "&d=1&hole=" + hole);
+  w.addSpacer(7);
+
+  // row 5: nav + save + full card
+  var r5 = w.addStack(); r5.layoutHorizontally(); r5.centerAlignContent(); r5.spacing = 6;
+  chip(r5, "<", ink, softBtn, 15, selfURL("hole=" + (hole > 1 ? hole - 1 : 18)), 10);
+  chip(r5, ">", ink, softBtn, 15, selfURL("hole=" + (hole < 18 ? hole + 1 : 1)), 10);
+  r5.addSpacer();
+  chip(r5, "SAVE", Color.white(), green, 9, selfURL("save=1"), 9);
+  chip(r5, "FULL CARD", ink, gold, 9, selfURL("card=1"), 9);
+  w.addSpacer(5);
 
   // row 6: island progress + next course
   var r6 = w.addStack(); r6.layoutHorizontally(); r6.centerAlignContent();
@@ -229,13 +228,13 @@ function buildCard(data) {
       if (ip[keys[z]].played < ip[keys[z]].total) { islandTxt = keys[z].toUpperCase() + " " + ip[keys[z]].played + "/" + ip[keys[z]].total; break; }
     }
   }
-  if (islandTxt) wp(r6, islandTxt, 8, cream, true);
+  if (islandTxt) wp(r6, islandTxt, 8, green, true);
   r6.addSpacer();
   var nextName = "";
   var courses = (data && data.courses) ? data.courses : [];
   var playedList = (data && data.coursesPlayedList) ? data.coursesPlayedList : [];
   for (var n = 0; n < courses.length; n++) if (playedList.indexOf(courses[n].name) === -1) { nextName = courses[n].name; break; }
-  wp(r6, nextName ? ("NEXT " + nextName) : "ALL 73 PLAYED", 8, dim, false);
+  wp(r6, nextName ? ("NEXT " + nextName) : "ALL 73 PLAYED", 8, soft, false);
 
   w.url = selfURL("card=1");
   w.refreshAfterDate = new Date(Date.now() + 60 * 1000);
@@ -280,8 +279,10 @@ function buildHTML(data, draft) {
     course: (draft && draft.course) || lastCourse,
     island: (draft && draft.island) || "Oahu",
     holes: (draft && draft.holes) || 18,
+    hole: (draft && draft.hole) || 1,
     pars: (draft && draft.pars) || [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4],
-    scores: (draft && draft.scores) || [],
+    scores: (draft && !draft.preview && draft.scores) ? draft.scores : [],
+    today: today(),
     islandMap: islandMap
   };
 
@@ -291,7 +292,7 @@ function buildHTML(data, draft) {
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
-body{margin:0;padding:14px 12px 104px;color:#16281c;
+body{margin:0;padding:14px 12px 112px;color:#16281c;
  font-family:-apple-system,Helvetica,sans-serif;
  background:
   radial-gradient(120% 70% at 50% -10%, rgba(255,255,255,.16), rgba(255,255,255,0) 55%),
@@ -304,231 +305,245 @@ h1{margin:2px 0 10px;font-size:13px;letter-spacing:2px;text-transform:uppercase;
  color:#f3e6bd;font-weight:800;text-shadow:0 2px 10px rgba(0,0,0,.5);
  display:flex;align-items:center;gap:8px}
 .pin{position:relative;width:15px;height:20px;flex:0 0 auto}
-.pin:before{content:"";position:absolute;left:5px;top:0;bottom:0;width:2px;background:#f3e6bd;border-radius:1px;
- box-shadow:0 0 6px rgba(0,0,0,.4)}
+.pin:before{content:"";position:absolute;left:5px;top:0;bottom:0;width:2px;background:#f3e6bd;border-radius:1px}
 .pin:after{content:"";position:absolute;left:7px;top:1px;width:0;height:0;
- border-left:9px solid #e2452f;border-top:5px solid transparent;border-bottom:5px solid transparent;
- filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+ border-left:9px solid #e2452f;border-top:5px solid transparent;border-bottom:5px solid transparent}
 h1:after{content:"";flex:1;height:1px;background:linear-gradient(90deg, rgba(243,230,189,.55), rgba(243,230,189,0))}
-@media (max-width:430px){
- body{padding:10px 8px 104px}
- .card{padding:10px 8px 12px;border-radius:16px}
- .nine{gap:2px}
- .ar button{padding:6px 0;font-size:12px}
- .sc{font-size:16px}
-}
-.card{background:#f8f4e7;border:1px solid #e0d8c1;border-radius:18px;padding:12px 12px 14px;
+.ver{font-size:9px;letter-spacing:.5px;color:rgba(243,230,189,.62);font-weight:700;text-transform:none}
+.card{background:#f8f4e7;border:1px solid #e0d8c1;border-radius:18px;padding:12px 10px 14px;
  box-shadow:0 18px 38px rgba(0,0,0,.34), inset 0 1px 0 #fffdf4}
 input{width:100%;padding:11px 12px;border-radius:11px;border:1px solid #d9d0b7;background:#fffdf6;
  color:#1d3226;font-size:15px;margin-bottom:8px;font-weight:600}
 input::placeholder{color:#9aa596;font-weight:500}
 .seg{display:flex;gap:6px;margin:2px 0 12px;background:#eae3cf;padding:4px;border-radius:12px}
-.seg button{flex:1;padding:9px;border-radius:9px;border:0;background:transparent;color:#5d6b59;
+.seg button{flex:1;padding:10px;border-radius:9px;border:0;background:transparent;color:#5d6b59;
  font-size:13px;font-weight:800;letter-spacing:.4px}
 .seg button.on{background:#1c6b41;color:#fff;box-shadow:0 2px 8px rgba(16,64,39,.35)}
 .lab{font-size:9px;letter-spacing:1.6px;font-weight:800;color:#8a8f7c;margin:2px 0 6px}
 .nine{display:grid;grid-template-columns:repeat(9,1fr);gap:3px}
-.hd{font-size:9px;text-align:center;font-weight:800;color:#f4f7f2;
- background:linear-gradient(#24794a,#1a5c37);border:1px solid #14502f;border-radius:6px 6px 0 0;padding:4px 0}
-.cell{background:#fffdf6;border:1px solid #e2dbc6;border-top:0;border-radius:0;padding:4px 1px 5px;text-align:center}
-.nine .cell:last-of-type{border-radius:0 0 8px 8px}
-.par{font-size:10px;color:#3f3a17;background:#f6e08a;border:1px solid #e6cd6a;border-radius:5px;
- margin:0 2px 4px;padding:2px 0;font-weight:800}
-.sc{font-size:17px;font-weight:900;line-height:1.05;letter-spacing:-.3px}
-.ar{display:flex;flex-direction:column;gap:2px;margin-top:3px;padding:0 2px}
-.ar button{border:0;border-radius:4px;background:#e8e2ce;color:#20402e;font-size:12px;padding:4px 0;font-weight:900}
-.ar button:active{background:#1c6b41;color:#fff}
-.under{color:#15703f}.over{color:#b3341f}.even{color:#2b3a30}.blank{color:#b8b5a4}
-.rule{height:1px;background:#e2dbc6;margin:10px 0}
+.hd{font-size:10px;text-align:center;font-weight:800;color:#f4f7f2;
+ background:linear-gradient(#24794a,#1a5c37);border:1px solid #14502f;border-radius:7px 7px 0 0;padding:5px 0}
+.cell{background:#fffdf6;border:1px solid #e2dbc6;border-top:0;border-radius:0 0 8px 8px;
+ padding:3px 2px 4px;text-align:center}
+.par{display:block;width:100%;border:1px solid #e6cd6a;background:#f6e08a;color:#3f3a17;
+ border-radius:5px;font-size:10px;font-weight:800;padding:4px 0;margin:0 0 3px}
+.sc{display:block;width:100%;border:0;background:#fff8e0;border-radius:6px;
+ font-size:19px;font-weight:900;line-height:1.1;padding:8px 0;color:#16281c}
+.sc:active{background:#dff0e3}
+.ar{display:block;width:100%;border:0;border-radius:6px;background:#e8e2ce;color:#20402e;
+ font-size:16px;font-weight:900;padding:7px 0;margin-top:3px;line-height:1}
+.ar:active{background:#1c6b41;color:#fff}
+.under{color:#15703f}.over{color:#b3341f}.even{color:#2b3a30}.blank{color:#a9a696}
+.rule{height:1px;background:#e2dbc6;margin:12px 0}
 .bar{position:fixed;left:0;right:0;bottom:0;padding:10px 12px 16px;display:flex;gap:10px;align-items:center;
- background:linear-gradient(rgba(8,48,28,.86), rgba(6,38,22,.97));border-top:1px solid rgba(243,230,189,.25);
- -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
-.tot{font-size:11px;color:#cfe3d2;flex:1;letter-spacing:.6px}
+ background:linear-gradient(rgba(8,48,28,.9), rgba(6,38,22,.98));border-top:1px solid rgba(243,230,189,.25)}
+.tot{font-size:11px;color:#cfe3d2;flex:1;letter-spacing:.5px;line-height:1.45}
 .tot b{color:#fff;font-size:15px;letter-spacing:0}
 .save{flex:0 0 auto;background:#f3e6bd;color:#123c25;border:0;border-radius:12px;
- font-size:15px;font-weight:900;padding:13px 22px;letter-spacing:.5px;
- box-shadow:0 6px 18px rgba(0,0,0,.35)}
+ font-size:15px;font-weight:900;padding:14px 22px;letter-spacing:.5px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
 .save:active{background:#fff7dc}
-.msg{font-size:11px;color:#ffe9a8;min-height:14px;margin-top:8px;font-weight:600}
+.msg{font-size:11px;color:#ffe9a8;min-height:16px;margin-top:8px;font-weight:700}
 .note{font-size:10px;color:#bcd3c1;margin-top:10px;line-height:1.5}
 </style></head><body>
-<h1><span class="pin"></span>Golf Scorecard</h1>
+<h1><span class="pin"></span>Golf Scorecard<span class="ver">v4</span></h1>
 <div class="card">
 <input id="course" list="cl" placeholder="Course name, any course in the world" autocomplete="off">
 <datalist id="cl">${courseOpts}</datalist>
 <input id="loc" placeholder="City, state or island (optional)" autocomplete="off">
 <div class="seg">
-  <button id="b9" onclick="setHoles(9)">Front 9</button>
-  <button id="b18" onclick="setHoles(18)">Full 18</button>
+  <button id="b9" type="button">Front 9</button>
+  <button id="b18" type="button">Full 18</button>
 </div>
 <div class="lab">Front Nine</div>
 <div class="nine" id="h9"></div>
 <div class="nine" id="s9"></div>
-<div class="rule"></div>
-<div class="lab">Back Nine</div>
-<div class="nine" id="h18"></div>
-<div class="nine" id="s18"></div>
+<div id="wrap18">
+  <div class="rule"></div>
+  <div class="lab">Back Nine</div>
+  <div class="nine" id="h18"></div>
+  <div class="nine" id="s18"></div>
+</div>
 </div>
 <div class="msg" id="msg"></div>
-<div class="note">Arrow up adds a stroke, arrow down removes one. Tap a yellow par cell to cycle par 3 / 4 / 5 / 6. Nothing is saved until you hit Save.</div>
+<div class="note">Tap a score to add a stroke, tap - to remove one. Tap a yellow par cell to cycle par 3 / 4 / 5 / 6. Nothing is saved until you hit Save.</div>
 <div class="bar">
   <div class="tot" id="tot"></div>
-  <button class="save" id="save" onclick="saveRound()">Save</button>
+  <button class="save" id="save" type="button">Save</button>
 </div>
 <script>
 var D = ${JSON.stringify(init)};
 var ROUNDS = ${JSON.stringify(ROUNDS)};
 var TEMPLATES = ${JSON.stringify(TEMPLATES)};
-var pars = D.pars.slice(0, 18), scores = [];
-for (var i = 0; i < (D.scores || []).length; i++) scores[i] = D.scores[i];
+var pars = D.pars.slice(0, 18);
+var scores = [];
+for (var i0 = 0; i0 < (D.scores || []).length; i0++) scores[i0] = D.scores[i0];
 var holes = D.holes || 18;
+var saving = false;
 
-var cin = document.getElementById("course");
-var lin = document.getElementById("loc");
+function q(id) { return document.getElementById(id); }
+function sign(n) { if (n === 0) return "E"; return (n > 0 ? "+" : "") + n; }
+function cls(d) { return d < 0 ? "under" : (d > 0 ? "over" : "even"); }
+function parOf(i) { return pars[i] || 4; }
+function has(i) { return scores[i] !== undefined && scores[i] !== null; }
+
+function cellHTML(i) {
+  var sv = has(i) ? String(scores[i]) : "-";
+  var c = has(i) ? cls(scores[i] - parOf(i)) : "blank";
+  return '<div class="cell">'
+    + '<button class="par" type="button" data-act="par" data-h="' + i + '">' + parOf(i) + '</button>'
+    + '<button class="sc ' + c + '" type="button" data-act="up" data-h="' + i + '">' + sv + '</button>'
+    + '<button class="ar" type="button" data-act="down" data-h="' + i + '">-</button>'
+    + '</div>';
+}
+function headHTML(from, n) {
+  var h = "";
+  for (var i = from; i < from + n; i++) h += '<div class="hd">' + (i + 1) + '</div>';
+  return h;
+}
+function render() {
+  q("h9").innerHTML = headHTML(0, 9);
+  var c9 = "";
+  for (var i = 0; i < 9; i++) c9 += cellHTML(i);
+  q("s9").innerHTML = c9;
+  q("h18").innerHTML = headHTML(9, 9);
+  var c18 = "";
+  for (var j = 9; j < 18; j++) c18 += cellHTML(j);
+  q("s18").innerHTML = c18;
+  q("wrap18").style.display = (holes === 18) ? "block" : "none";
+  q("b9").className = (holes === 9) ? "on" : "";
+  q("b18").className = (holes === 18) ? "on" : "";
+  totals();
+}
+function slice(from, n) {
+  var s = 0, p = 0, any = false;
+  for (var i = from; i < from + n; i++) {
+    if (has(i)) { s += scores[i]; p += parOf(i); any = true; }
+  }
+  return { s: s, p: p, any: any };
+}
+function totals() {
+  var f = slice(0, 9), b = slice(9, 9);
+  var txt = "OUT <b>" + (f.any ? f.s + " (" + sign(f.s - f.p) + ")" : "--") + "</b>";
+  if (holes === 18) txt += "  IN <b>" + (b.any ? b.s + " (" + sign(b.s - b.p) + ")" : "--") + "</b>";
+  var ts = f.s + (holes === 18 ? b.s : 0), tp = f.p + (holes === 18 ? b.p : 0);
+  txt += "  TOTAL <b>" + ((f.any || (holes === 18 && b.any)) ? ts + " (" + sign(ts - tp) + ")" : "--") + "</b>";
+  q("tot").innerHTML = txt;
+}
+function setMsg(t) { q("msg").textContent = t || ""; }
+
+function tap(act, h) {
+  if (act === "par") {
+    var order = [3, 4, 5, 6];
+    var at = order.indexOf(parOf(h));
+    pars[h] = order[(at + 1) % order.length];
+  } else if (act === "up") {
+    scores[h] = has(h) ? scores[h] + 1 : parOf(h);
+  } else if (act === "down") {
+    if (!has(h)) scores[h] = parOf(h);
+    else if (scores[h] > 1) scores[h] = scores[h] - 1;
+  }
+  render();
+}
+
+document.addEventListener("click", function (e) {
+  var el = e.target;
+  var act = null;
+  while (el && el !== document.body) {
+    if (el.getAttribute && el.getAttribute("data-act")) { act = el.getAttribute("data-act"); break; }
+    el = el.parentNode;
+  }
+  if (act) {
+    var hh = parseInt(el.getAttribute("data-h"), 10);
+    tap(act, hh);
+    return;
+  }
+  if (e.target.id === "b9") { holes = 9; render(); }
+  else if (e.target.id === "b18") { holes = 18; render(); }
+  else if (e.target.id === "save") { saveRound(); }
+}, false);
+
+window.addEventListener("error", function (e) {
+  var m = q("msg");
+  if (m) m.textContent = "Script error: " + (e.message || "unknown");
+});
+
+var cin = q("course"), lin = q("loc");
 cin.value = D.course || "";
 lin.value = D.island || "";
-if (!cin.value) cin.placeholder = "Course name, any course in the world";
 
-function syncCourse() {
-  D.course = cin.value.trim();
-  var guess = D.islandMap[D.course];
-  if (guess && !lin.value) { lin.value = guess; D.island = guess; }
-  if (D.course.length > 2) loadTemplate(D.course);
-}
-cin.addEventListener("change", syncCourse);
-cin.addEventListener("blur", syncCourse);
-lin.addEventListener("change", function () { D.island = lin.value.trim(); });
+cin.addEventListener("change", function () {
+  var name = cin.value.trim();
+  var isl = D.islandMap[name];
+  if (isl) lin.value = isl;
+  loadTemplate(name);
+});
 
-function setHoles(n) { holes = n; render(); }
-function loadTemplate(course) {
-  if (!course) return;
-  document.getElementById("msg").textContent = "Loading par card…";
-  fetch(TEMPLATES, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({course: course})})
-    .then(function(r){return r.json();})
-    .then(function(t){
-      if (t && t.ok && t.template && t.template.pars && t.template.pars.length) {
-        pars = t.template.pars.slice(0, 18);
-        if (t.template.island) D.island = t.template.island;
-        document.getElementById("msg").textContent = "Saved par card loaded (" + pars.length + " holes).";
-      } else {
-        pars = [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4];
-        document.getElementById("msg").textContent = "No saved card for this course, starting at par 4. Tap par cells to fix them.";
+function loadTemplate(name) {
+  if (!name) return;
+  fetch(TEMPLATES + "?course=" + encodeURIComponent(name))
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      var p = res && res.template && res.template.pars;
+      if (p && p.length) {
+        for (var i = 0; i < p.length && i < 18; i++) pars[i] = p[i];
+        render();
+        setMsg("Saved par card loaded (" + p.length + " holes).");
       }
-      render();
     })
-    .catch(function(){ document.getElementById("msg").textContent = "Could not load par card."; render(); });
-}
-function bump(i, d) {
-  var base = (scores[i] === undefined) ? pars[i] : scores[i];
-  scores[i] = Math.max(1, Math.min(15, base + d));
-  render();
-}
-function bumpPar(i) {
-  var order = [3,4,5,6];
-  var cur = order.indexOf(pars[i]);
-  pars[i] = order[(cur + 1) % order.length];
-  render();
-}
-function deltasFor(from, to) {
-  var s = 0, p = 0, n = 0;
-  for (var i = from; i < to; i++) {
-    if (scores[i] !== undefined && scores[i] !== null) { s += scores[i]; p += pars[i]; n++; }
-  }
-  return { s: s, p: p, n: n, any: n > 0 };
-}
-function cls(d) { return d < 0 ? "under" : (d > 0 ? "over" : "even"); }
-function sgn(n) { return n === 0 ? "E" : (n > 0 ? "+" + n : "" + n); }
-
-function render() {
-  var front = Math.min(9, holes);
-  var back = Math.max(0, holes - 9);
-  var h9 = "", s9 = "", h18 = "", s18 = "";
-  for (var i = 0; i < front; i++) {
-    h9 += '<div class="hd">' + (i + 1) + "</div>";
-    var sc = scores[i];
-    var shown = sc === undefined ? "-" : sc;
-    s9 += '<div class="cell"><div class="par" onclick="bumpPar(' + i + ')">' + pars[i] + "</div>"
-        + '<div class="sc ' + (sc === undefined ? "blank" : cls(sc - pars[i])) + '">' + shown + "</div>"
-        + '<div class="ar"><button onclick="bump(' + i + ',1)">+</button><button onclick="bump(' + i + ',-1)">-</button></div></div>';
-  }
-  for (var j = 9; j < 9 + back; j++) {
-    h18 += '<div class="hd">' + (j + 1) + "</div>";
-    var sc2 = scores[j];
-    var shown2 = sc2 === undefined ? "-" : sc2;
-    s18 += '<div class="cell"><div class="par" onclick="bumpPar(' + j + ')">' + pars[j] + "</div>"
-         + '<div class="sc ' + (sc2 === undefined ? "blank" : cls(sc2 - pars[j])) + '">' + shown2 + "</div>"
-         + '<div class="ar"><button onclick="bump(' + j + ',1)">+</button><button onclick="bump(' + j + ',-1)">-</button></div></div>';
-  }
-  document.getElementById("h9").innerHTML = h9;
-  document.getElementById("s9").innerHTML = s9;
-  document.getElementById("h18").innerHTML = h18;
-  document.getElementById("s18").innerHTML = s18;
-  document.getElementById("b9").className = holes === 9 ? "on" : "";
-  document.getElementById("b18").className = holes === 18 ? "on" : "";
-
-  var f = deltasFor(0, front), b = deltasFor(9, 9 + back);
-  var line = "";
-  if (f.any && (holes > 9)) line += "OUT <b>" + f.s + " (" + sgn(f.s - f.p) + ")</b>  ";
-  if (holes > 9) line += "IN <b>" + (b.any ? b.s + " (" + sgn(b.s - b.p) + ")" : "—") + "</b>  ";
-  var totS = f.s + (holes > 9 ? b.s : 0), totP = f.p + (holes > 9 ? b.p : 0);
-  line += "TOTAL <b>" + (f.any || b.any ? totS + " (" + sgn(totS - totP) + ")" : "—") + "</b>";
-  document.getElementById("tot").innerHTML = line;
+    .catch(function () {});
 }
 
 function saveRound() {
-  var front = Math.min(9, holes), back = Math.max(0, holes - 9);
-  var usedPars = pars.slice(0, front).concat(pars.slice(9, 9 + back));
-  // save only the holes actually filled in, in order, so a 9 hole evening never records fake 4s
-  var usedScores = [];
-  var stopped = false;
-  for (var i = 0; i < front; i++) {
-    if (scores[i] === undefined || scores[i] === null) { stopped = true; break; }
-    usedScores.push(scores[i]);
+  if (saving) return;
+  var used = [], usedPars = [], usedHoles = [];
+  var last = (holes === 9) ? 9 : 18;
+  for (var hi = 0; hi < last; hi++) {
+    if (!has(hi)) continue;
+    used.push(scores[hi]);
+    usedPars.push(parOf(hi));
+    usedHoles.push(hi + 1);
   }
-  if (!stopped) {
-    for (var j = 9; j < 9 + back; j++) {
-      if (scores[j] === undefined || scores[j] === null) break;
-      usedScores.push(scores[j]);
-    }
-  }
-  usedPars = usedPars.slice(0, usedScores.length);
-  var courseName = (cin.value || D.course || "").trim();
-  var loc = (lin.value || D.island || "").trim() || (D.islandMap[courseName] || "Other");
-  if (!courseName) { document.getElementById("msg").textContent = "Type a course name first."; return; }
-  if (!usedScores.length) { document.getElementById("msg").textContent = "Add at least one score first."; return; }
+  if (!used.length) { setMsg("Add at least one score first. Tap a number to start."); return; }
+  var course = (cin.value || "").trim() || D.course || "Unknown course";
+  var island = (lin.value || "").trim() || "Other";
   var body = {
     action: "create",
-    course: courseName,
-    island: loc,
-    holeScores: usedScores,
-    date: new Date().toISOString().slice(0, 10),
-    score: usedScores.reduce(function (a, b) { return a + b; }, 0),
-    parsUsed: usedPars.reduce(function (a, b) { return a + b; }, 0),
-    holesPlayed: usedScores.length,
-    notes: "Hole by hole: " + usedScores.join("/") + " (par " + usedPars.join("/") + ")"
+    course: course,
+    island: island,
+    holeScores: used,
+    date: D.today || "",
+    score: 0,
+    parsUsed: 0,
+    holesPlayed: used.length,
+    notes: "Hole by hole: " + used.join("/") + " (par " + usedPars.join("/") + ") [holes " + usedHoles.join(",") + "]"
   };
-  var btn = document.getElementById("save");
-  btn.textContent = "Saving…";
-  fetch(ROUNDS, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})
-    .then(function(r){return r.json();})
-    .then(function(res){
-      if (res && res.ok) {
-        fetch(TEMPLATES, {method:"POST", headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({action:"save", course: courseName, island: loc, pars: usedPars})}).catch(function(){});
-        btn.textContent = "Saved";
-        document.getElementById("msg").textContent = "Round saved (" + body.holesPlayed + " holes). Close this screen and the widget updates.";
+  for (var i = 0; i < used.length; i++) body.score += used[i];
+  for (var j = 0; j < usedPars.length; j++) body.parsUsed += usedPars[j];
+
+  saving = true;
+  var btn = q("save");
+  btn.textContent = "Saving";
+  setMsg("");
+  fetch(ROUNDS, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      saving = false;
+      btn.textContent = "Save";
+      if (res && (res.ok || res.success)) {
+        setMsg("Saved " + body.holesPlayed + " holes to the Daily Dashboard.");
         scores = [];
-        setTimeout(function(){ btn.textContent = "Save"; render(); }, 1600);
+        render();
       } else {
-        btn.textContent = "Save";
-        document.getElementById("msg").textContent = "Could not save: " + ((res && res.error) || "unknown");
+        setMsg("Could not save: " + ((res && (res.error || res.dashError)) || "unknown"));
       }
     })
-    .catch(function(e){
+    .catch(function (e) {
+      saving = false;
       btn.textContent = "Save";
-      document.getElementById("msg").textContent = "Network error: " + String(e).slice(0, 60);
+      setMsg("Network error: " + String(e).slice(0, 70));
     });
 }
+
 render();
 </script></body></html>`;
 
@@ -579,8 +594,8 @@ function applyBump(hole, delta, page, keepHole) {
   var i = Number(hole) - 1;
   if (isNaN(i) || i < 0 || i > 17) return d;
   var par = d.pars[i] || 4;
-  var cur = (d.scores[i] === undefined || d.scores[i] === null) ? par : d.scores[i];
-  var next = cur + Number(delta || 1);
+  var has = !(d.scores[i] === undefined || d.scores[i] === null);
+  var next = has ? d.scores[i] + Number(delta || 1) : par;
   if (next < 1) next = 1;
   if (next > 15) next = 15;
   d.scores[i] = next;
@@ -601,14 +616,16 @@ function showCardPreview() {
 function saveFromWidget() {
   var d = wipDraft();
   var scores = d.scores || [];
-  var front = 0;
-  while (front < 9 && scores[front] !== undefined && scores[front] !== null) front++;
-  var back = 0;
-  if (front === 9) { while (back < 9 && scores[9 + back] !== undefined && scores[9 + back] !== null) back++; }
-  var used = scores.slice(0, front).concat(scores.slice(9, 9 + back));
-  if (!used.length) return Script.complete();
   var pars = d.pars || [];
-  var usedPars = pars.slice(0, front).concat(pars.slice(9, 9 + back)).slice(0, used.length);
+  var used = [], usedPars = [], usedHoles = [];
+  for (var hi = 0; hi < 18; hi++) {
+    var sv = scores[hi];
+    if (sv === undefined || sv === null) continue;
+    used.push(sv);
+    usedPars.push(pars[hi] || 4);
+    usedHoles.push(hi + 1);
+  }
+  if (!used.length) return Script.complete();
   var body = {
     action: "create",
     course: d.course,
@@ -618,7 +635,7 @@ function saveFromWidget() {
     score: sum(used),
     parsUsed: sum(usedPars),
     holesPlayed: used.length,
-    notes: "Hole by hole: " + used.join("/") + " (par " + usedPars.join("/") + ")"
+    notes: "Hole by hole: " + used.join("/") + " (par " + usedPars.join("/") + ") [holes " + usedHoles.join(",") + "]"
   };
   try { call(ROUNDS, body); } catch (e) {}
   d.scores = [];
@@ -626,18 +643,22 @@ function saveFromWidget() {
   d.preview = false;
   writeJSON(path(DRAFT), d);
   dropFile(path(CACHE));
-  return showCardPreview();
+  var a = new Alert();
+  a.title = "Round saved";
+  a.message = body.holeScores.length + " holes at " + d.course + " sent to the Daily Dashboard.";
+  a.addAction("Done");
+  return a.present().then(function () { Script.complete(); });
 }
 
 /* ---------------- entry ---------------- */
 if (query.bump) {
   applyBump(query.bump, query.d, query.page, query.hole);
-  showCardPreview();
+  runInteractive();
 } else if (query.hole) {
   var hd = wipDraft();
   hd.hole = Math.min(18, Math.max(1, Number(query.hole)));
   writeJSON(path(DRAFT), hd);
-  showCardPreview();
+  runInteractive();
 } else if (query.save) {
   saveFromWidget();
 } else if (query.card) {
