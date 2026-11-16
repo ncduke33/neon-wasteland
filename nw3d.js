@@ -105,13 +105,23 @@
 
   function positionCamera() {
     var aspect = A.W / A.H;
-    var span = A.W / A.PPU;             /* visible width in world units */
-    var dist = Math.max(11, span * 0.86);
-    camera.position.set(0, dist * 0.82, dist * 0.62);
-    camera.lookAt(0, 0.35, 0);
+    var span = A.W / A.PPU;
+    var base = Math.max(9.5, span * 0.78);
+    var dist = base / (A.zoom || 1);
+    /* 70 degree top-down pitch: high above, short forward offset */
+    camera.position.set(0, dist * 1.16, dist * 0.42);
+    camera.lookAt(0, 0.2, 0);
     camera.aspect = aspect;
     camera.updateProjectionMatrix();
   }
+
+  A.zoom = 0.74;
+  A.setZoom = function (z) {
+    A.zoom = Math.min(2.2, Math.max(0.5, z));
+    if (A.ok) positionCamera();
+    return A.zoom;
+  };
+  A.getZoom = function () { return A.zoom || 1; };
 
   A.resize = function (w, h) {
     if (!A.ok) return;
