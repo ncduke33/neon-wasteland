@@ -114,21 +114,23 @@ function drawNine(dc, y, first, count, pars, scores, W, tails) {
     drawCell(dc, x + j * cw, y + rowHole, cw, rowPar, pv === null ? "-" : pv, parFg, parBg, 9, true);
   }
   for (var t2 = 0; t2 < tails.length; t2++) {
-    drawCell(dc, x + (count + t2) * cw, y + rowHole, cw, rowPar, tails[t2].p, parFg, parBg, 9, true);
+    drawCell(dc, x + (count + t2) * cw, y + rowHole, cw, rowPar, tails[t2].p ? tails[t2].p : "-", parFg, parBg, 9, true);
   }
 
   for (var k = 0; k < count; k++) {
     var idx = first - 1 + k;
     var sv = scores ? scores[idx] : null;
     var pvv = pars ? pars[idx] : null;
-    var blank = (sv === null || sv === undefined || pvv === null || pvv === undefined);
-    drawCell(dc, x + k * cw, y + rowHole + rowPar, cw, rowScore,
-      blank ? "-" : sign(sv - pvv), blank ? new Color("#4a4a4a") : deltaColor(sv - pvv), gridBg, 10, true);
+    var hasScore = !(sv === null || sv === undefined);
+    var show = !hasScore ? "-" : (pvv === null || pvv === undefined ? String(sv) : sign(sv - pvv));
+    var col = !hasScore ? new Color("#4a4a4a") : ((pvv === null || pvv === undefined) ? new Color("#d8d8d8") : deltaColor(sv - pvv));
+    drawCell(dc, x + k * cw, y + rowHole + rowPar, cw, rowScore, show, col, gridBg, 10, true);
   }
   for (var t3 = 0; t3 < tails.length; t3++) {
     var tt = tails[t3];
-    drawCell(dc, x + (count + t3) * cw, y + rowHole + rowPar, cw, rowScore,
-      tt.any ? sign(tt.s - tt.p) : "-", tt.any ? deltaColor(tt.s - tt.p) : new Color("#4a4a4a"), tailBg, 10, true);
+    var tTxt = !tt.any ? "-" : (tt.p ? sign(tt.s - tt.p) : String(tt.s));
+    var tCol = !tt.any ? new Color("#4a4a4a") : (tt.p ? deltaColor(tt.s - tt.p) : new Color("#d8d8d8"));
+    drawCell(dc, x + (count + t3) * cw, y + rowHole + rowPar, cw, rowScore, tTxt, tCol, tailBg, 10, true);
   }
   return y + rowHole + rowPar + rowScore;
 }
@@ -164,18 +166,31 @@ function buildCard(data, draft) {
   // header
   drawCell(dc, 10, 8, 150, 14, "HAWAII GOLF", gold, null, 10, true, "left");
   var st = data ? data.stats : null;
-  drawCell(dc, W - 110, 8, 100, 14, st ? (st.coursesPlayed + "/" + st.coursesTotal + " courses") : "", dim, null, 9, false, "right");
+  var hdr = "";
+  if (st) {
+    hdr = st.coursesPlayed + "/" + st.coursesTotal + " HI";
+    if (st.worldPlayed) hdr += "  +" + st.worldPlayed + " world";
+  }
+  drawCell(dc, W - 165, 8, 155, 14, hdr, dim, null, 9, false, "right");
 
   var rounds = (data && data.rounds) ? data.rounds : [];
-  // Prefer a round that actually has hole detail for the grid.
+
+  function detailOf(r) {
+    if (!r) return null;
+    var pn = parseNotes(r);
+    var sc = (r.holeScores && r.holeScores.length) ? r.holeScores : (pn ? pn.scores : null);
+    if (!sc) return null;
+    return { scores: sc, pars: pn ? pn.pars : null };
+  }
+
   var detail = null, round = null;
   if (draft) {
     round = draft;
     detail = { pars: draft.pars, scores: draft.scores };
   } else {
     for (var i = 0; i < rounds.length; i++) {
-      var pn = parseNotes(rounds[i]);
-      if (pn) { detail = pn; round = rounds[i]; break; }
+      var dd = detailOf(rounds[i]);
+      if (dd) { detail = dd; round = rounds[i]; break; }
     }
     if (!round && rounds.length) round = rounds[0];
   }
@@ -312,15 +327,18 @@ function buildHTML(data, draft) {
   var lastCourse = (data && data.stats && data.stats.lastCourse) ? data.stats.lastCourse : (draft && draft.course) || "Ala Wai";
 
   var courseOpts = courses.map(function (c) {
-    return '<option value="' + c.name + '" data-island="' + (c.island || "Oahu") + '">' + c.name + " · " + (c.island || "Oahu") + "</option>";
+    return '<option value="' + c.name + '">' + c.name + (c.island ? " · " + c.island : "") + "</option>";
   }).join("");
+  var islandMap = {};
+  for (var ci = 0; ci < courses.length; ci++) islandMap[courses[ci].name] = courses[ci].island || "";
 
   var init = {
     course: (draft && draft.course) || lastCourse,
     island: (draft && draft.island) || "Oahu",
     holes: (draft && draft.holes) || 18,
     pars: (draft && draft.pars) || [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4],
-    scores: (draft && draft.scores) || []
+    scores: (draft && draft.scores) || [],
+    islandMap: islandMap
   };
 
   return `<!DOCTYPE html><html><head>
@@ -329,7 +347,8 @@ function buildHTML(data, draft) {
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:#0b0b0d;color:#f2f0ea;font-family:-apple-system,Helvetica,sans-serif;padding:10px 10px 96px}
 h1{font-size:15px;margin:0 0 8px;letter-spacing:.5px;color:#d4af37}
-select{width:100%;padding:10px;border-radius:9px;border:1px solid #2a2f33;background:#15181b;color:#f2f0ea;font-size:15px;margin-bottom:8px}
+input{width:100%;padding:10px;border-radius:9px;border:1px solid #2a2f33;background:#15181b;color:#f2f0ea;font-size:15px;margin-bottom:8px}
+input::placeholder{color:#5c6266}
 .seg{display:flex;gap:6px;margin-bottom:10px}
 .seg button{flex:1;padding:8px;border-radius:8px;border:1px solid #2a2f33;background:#15181b;color:#9a9a9a;font-size:13px;font-weight:600}
 .seg button.on{background:#1f6f43;color:#fff;border-color:#2f8f5b}
@@ -350,8 +369,10 @@ select{width:100%;padding:10px;border-radius:9px;border:1px solid #2a2f33;backgr
 .msg{font-size:11px;color:#7ddc9a;min-height:14px;margin-top:6px}
 .note{font-size:10px;color:#6b7175;margin-top:10px;line-height:1.5}
 </style></head><body>
-<h1>HAWAII GOLF · SCORECARD</h1>
-<select id="course">${courseOpts}</select>
+<h1>GOLF · SCORECARD</h1>
+<input id="course" list="cl" placeholder="Course name, any course in the world" autocomplete="off">
+<datalist id="cl">${courseOpts}</datalist>
+<input id="loc" placeholder="City, state or island (optional)" autocomplete="off">
 <div class="seg">
   <button id="b9" onclick="setHoles(9)">Front 9</button>
   <button id="b18" onclick="setHoles(18)">Full 18</button>
@@ -374,13 +395,25 @@ var pars = D.pars.slice(0, 18), scores = [];
 for (var i = 0; i < (D.scores || []).length; i++) scores[i] = D.scores[i];
 var holes = D.holes || 18;
 
-var sel = document.getElementById("course");
-sel.value = D.course;
-if (!sel.value) sel.selectedIndex = 0;
-sel.onchange = function () { D.course = sel.value; loadTemplate(sel.value); };
+var cin = document.getElementById("course");
+var lin = document.getElementById("loc");
+cin.value = D.course || "";
+lin.value = D.island || "";
+if (!cin.value) cin.placeholder = "Course name, any course in the world";
+
+function syncCourse() {
+  D.course = cin.value.trim();
+  var guess = D.islandMap[D.course];
+  if (guess && !lin.value) { lin.value = guess; D.island = guess; }
+  if (D.course.length > 2) loadTemplate(D.course);
+}
+cin.addEventListener("change", syncCourse);
+cin.addEventListener("blur", syncCourse);
+lin.addEventListener("change", function () { D.island = lin.value.trim(); });
 
 function setHoles(n) { holes = n; render(); }
 function loadTemplate(course) {
+  if (!course) return;
   document.getElementById("msg").textContent = "Loading par card…";
   fetch(TEMPLATES, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({course: course})})
     .then(function(r){return r.json();})
@@ -457,13 +490,29 @@ function render() {
 function saveRound() {
   var front = Math.min(9, holes), back = Math.max(0, holes - 9);
   var usedPars = pars.slice(0, front).concat(pars.slice(9, 9 + back));
+  // save only the holes actually filled in, in order, so a 9 hole evening never records fake 4s
   var usedScores = [];
-  for (var i = 0; i < front; i++) if (scores[i] === undefined) usedScores.push(pars[i]); else usedScores.push(scores[i]);
-  for (var j = 9; j < 9 + back; j++) if (scores[j] === undefined) usedScores.push(pars[j]); else usedScores.push(scores[j]);
+  var stopped = false;
+  for (var i = 0; i < front; i++) {
+    if (scores[i] === undefined || scores[i] === null) { stopped = true; break; }
+    usedScores.push(scores[i]);
+  }
+  if (!stopped) {
+    for (var j = 9; j < 9 + back; j++) {
+      if (scores[j] === undefined || scores[j] === null) break;
+      usedScores.push(scores[j]);
+    }
+  }
+  usedPars = usedPars.slice(0, usedScores.length);
+  var courseName = (cin.value || D.course || "").trim();
+  var loc = (lin.value || D.island || "").trim() || (D.islandMap[courseName] || "Other");
+  if (!courseName) { document.getElementById("msg").textContent = "Type a course name first."; return; }
+  if (!usedScores.length) { document.getElementById("msg").textContent = "Add at least one score first."; return; }
   var body = {
     action: "create",
-    course: sel.value || D.course,
-    island: D.island || "Oahu",
+    course: courseName,
+    island: loc,
+    holeScores: usedScores,
     date: new Date().toISOString().slice(0, 10),
     score: usedScores.reduce(function (a, b) { return a + b; }, 0),
     parsUsed: usedPars.reduce(function (a, b) { return a + b; }, 0),
@@ -477,9 +526,9 @@ function saveRound() {
     .then(function(res){
       if (res && res.ok) {
         fetch(TEMPLATES, {method:"POST", headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({action:"save", course: body.course, island: body.island, pars: usedPars})}).catch(function(){});
+          body:JSON.stringify({action:"save", course: courseName, island: loc, pars: usedPars})}).catch(function(){});
         btn.textContent = "Saved ✓";
-        document.getElementById("msg").textContent = "Round saved. Close this screen and the widget updates.";
+        document.getElementById("msg").textContent = "Round saved (" + body.holesPlayed + " holes). Close this screen and the widget updates.";
         scores = [];
         setTimeout(function(){ btn.textContent = "Save"; render(); }, 1600);
       } else {
@@ -503,7 +552,7 @@ function runInteractive() {
   var web = new WebView();
   web.loadHTML(buildHTML(got.data, draft), "https://base44.app/");
   web.present().then(function () {
-    return web.evaluateJavaScript("JSON.stringify({course: sel.value, island: D.island, holes: holes, pars: pars, scores: scores})")
+    return web.evaluateJavaScript("JSON.stringify({course: (document.getElementById('course')||{}).value || '', island: (document.getElementById('loc')||{}).value || '', holes: holes, pars: pars, scores: scores})")
       .then(function (raw) {
         var st = null;
         try { st = JSON.parse(raw); } catch (e) {}
