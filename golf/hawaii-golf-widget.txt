@@ -5,7 +5,11 @@
 // ES5 only: no template literals, no async/await.
 // ============================================================
 
-var API = "https://the-berry-bot-45c0d4c8.base44.app/functions/golfRounds";
+// Two ways to reach the same data. Whichever answers first wins.
+var HOSTS = [
+  "https://base44.app/api/apps/69c02afabe5a8f8045c0d4c8/functions/golfRounds",
+  "https://the-berry-bot-45c0d4c8.base44.app/functions/golfRounds"
+];
 var CACHE = "hawaii_golf_cache.json";
 var LIVE_SCRIPT = "Golf Live Round";   // must match the Live Round script's name in Scriptable
 var APP_URL = "https://app.base44.com/apps/692a4a39e5adb5de7832bfb4";
@@ -31,17 +35,28 @@ function writeCache(obj) {
   try { fm().writeString(cachePath(), JSON.stringify(obj)); } catch (e) {}
 }
 
-function fetchStats() {
-  var req = new Request(API);
+function attempt(url) {
+  var req = new Request(url);
   req.method = "GET";
-  req.timeoutInterval = 12;
-  try {
-    var data = req.loadJSON();
-    if (data && data.ok) { writeCache(data); return { data: data, stale: false }; }
-  } catch (e) {}
+  req.headers = { "Accept": "application/json", "Cache-Control": "no-cache" };
+  req.timeoutInterval = 20;
+  return req.loadJSON();
+}
+
+function fetchStats() {
+  var errs = [];
+  for (var i = 0; i < HOSTS.length; i++) {
+    try {
+      var data = attempt(HOSTS[i]);
+      if (data && data.ok && data.stats) { writeCache(data); return { data: data, stale: false, err: null }; }
+      errs.push(data && data.error ? data.error : "bad payload");
+    } catch (e) {
+      errs.push(String(e).slice(0, 42));
+    }
+  }
   var cached = readCache();
-  if (cached) return { data: cached, stale: true };
-  return { data: null, stale: false };
+  if (cached) return { data: cached, stale: true, err: errs.join(" / ") };
+  return { data: null, stale: false, err: errs.join(" / ") };
 }
 
 function sign(n) {
@@ -108,9 +123,10 @@ if (!data || !data.stats) {
   var e0 = w.addText("Could not reach your round data.");
   e0.font = Font.systemFont(11);
   e0.textColor = DIM;
-  var e1 = w.addText("Open the widget once you have signal.");
-  e1.font = Font.systemFont(9);
-  e1.textColor = DIM;
+  var e1 = w.addText(res.err ? ("ERR " + res.err) : "No cached round on this phone yet.");
+  e1.font = Font.systemFont(7);
+  e1.textColor = new Color("#7a5a5a");
+  e1.lineLimit = 2;
   w.addSpacer(6);
   var e2 = w.addText("TAP TO PLAY ANYWAY");
   e2.font = Font.boldSystemFont(9);
