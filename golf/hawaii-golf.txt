@@ -1,0 +1,521 @@
+// ============================================================
+// HAWAII GOLF — one script, one widget
+// Widget: scorecard snapshot (holes, par, score, OUT / IN / TOTAL)
+// Tap widget: interactive card with arrows to move every score
+// ============================================================
+
+var BASE = "https://base44.app/api/apps/69c02afabe5a8f8045c0d4c8/functions/";
+var ROUNDS = BASE + "golfRounds";
+var TEMPLATES = BASE + "golfTemplates";
+var CACHE = "hgolf_card_cache.json";
+var DRAFT = "hgolf_draft.json";
+var SELF = "Hawaii Golf";
+
+var isWidget = (typeof config !== "undefined") && config.runsInWidget;
+
+/* ---------------- shared helpers ---------------- */
+function fm() { return FileManager.local(); }
+function path(name) { return fm().joinPath(fm().documentsDirectory(), name); }
+function readJSON(p) { try { if (!fm().fileExists(p)) return null; return JSON.parse(fm().readString(p)); } catch (e) { return null; } }
+function writeJSON(p, o) { try { fm().writeString(p, JSON.stringify(o)); } catch (e) {} }
+function dropFile(p) { try { if (fm().fileExists(p)) fm().remove(p); } catch (e) {} }
+
+function call(url, payload) {
+  var req = new Request(url);
+  req.timeoutInterval = 20;
+  req.headers = { "Accept": "application/json" };
+  if (payload) {
+    req.method = "POST";
+    req.headers["Content-Type"] = "application/json";
+    req.body = JSON.stringify(payload);
+  }
+  return req.loadJSON();
+}
+
+function sign(n) {
+  if (n === null || n === undefined || isNaN(n)) return "-";
+  if (n === 0) return "E";
+  return (n > 0 ? "+" : "") + n;
+}
+function today() {
+  var d = new Date(), m = d.getMonth() + 1, day = d.getDate();
+  return d.getFullYear() + "-" + (m < 10 ? "0" + m : m) + "-" + (day < 10 ? "0" + day : day);
+}
+function shortDate(iso) {
+  if (!iso) return "";
+  var p = String(iso).split("-");
+  if (p.length !== 3) return String(iso);
+  var M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return (M[parseInt(p[1], 10) - 1] || p[1]) + " " + parseInt(p[2], 10);
+}
+// Pull the hole-by-hole scores and pars out of a saved round's notes.
+function parseNotes(r) {
+  if (!r || !r.notes) return null;
+  var m = String(r.notes).match(/Hole by hole:\s*([0-9]+(?:\/[0-9]+)*)\s*\(\s*par\s*([0-9]+(?:\/[0-9]+)*)/i);
+  if (!m) return null;
+  var s = m[1].split("/").map(function (x) { return parseInt(x, 10); });
+  var p = m[2].split("/").map(function (x) { return parseInt(x, 10); });
+  if (!s.length || !p.length || s.length !== p.length) return null;
+  for (var i = 0; i < s.length; i++) { if (isNaN(s[i]) || isNaN(p[i])) return null; }
+  return { scores: s, pars: p };
+}
+function sum(a) { var t = 0; for (var i = 0; i < a.length; i++) t += (a[i] || 0); return t; }
+function sumSlice(a, from, to) { var t = 0; for (var i = from; i < to && i < a.length; i++) t += (a[i] || 0); return t; }
+
+/* ============================================================
+   WIDGET
+   ============================================================ */
+function getData() {
+  try {
+    var d = call(ROUNDS);
+    if (d && d.ok && d.stats) { writeJSON(path(CACHE), d); return { data: d, stale: false }; }
+  } catch (e) {}
+  var c = readJSON(path(CACHE));
+  if (c && c.stats) return { data: c, stale: true };
+  return { data: null, stale: false };
+}
+
+function drawCell(dc, x, y, w, h, text, fg, bg, size, bold, align) {
+  if (bg) { dc.setFillColor(bg); dc.fillRect(new Rect(x, y, w, h)); }
+  dc.setFont(bold ? Font.boldSystemFont(size) : Font.systemFont(size));
+  dc.setTextColor(fg);
+  dc.setTextAlign(align || "center");
+  var ty = y + (h - size) / 2 - 1;
+  dc.drawTextInRect(String(text), new Rect(x, ty, w, h));
+}
+
+function deltaColor(d) {
+  if (d < 0) return new Color("#7ddc9a");
+  if (d > 0) return new Color("#ff8f7d");
+  return new Color("#d8d8d8");
+}
+
+function drawNine(dc, y, first, count, pars, scores, W, tails) {
+  var pad = 9;
+  tails = tails || [];
+  var cols = count + tails.length;
+  var cw = (W - pad * 2) / cols;
+  var x = pad;
+  var rowHole = 13, rowPar = 15, rowScore = 17;
+  var holeBg = new Color("#1f6f43"), parBg = new Color("#f2c94c");
+  var parFg = new Color("#1a1a1a");
+  var gridBg = new Color("#141618");
+  var tailBg = new Color("#1c2420");
+
+  for (var i = 0; i < count; i++) {
+    drawCell(dc, x + i * cw, y, cw, rowHole, first + i, new Color("#eaf3ec"), holeBg, 8, true);
+  }
+  for (var t = 0; t < tails.length; t++) {
+    drawCell(dc, x + (count + t) * cw, y, cw, rowHole, tails[t].label, new Color("#dff0e4"), holeBg, 8, true);
+  }
+
+  for (var j = 0; j < count; j++) {
+    var pv = pars ? pars[first - 1 + j] : null;
+    drawCell(dc, x + j * cw, y + rowHole, cw, rowPar, pv === null ? "-" : pv, parFg, parBg, 9, true);
+  }
+  for (var t2 = 0; t2 < tails.length; t2++) {
+    drawCell(dc, x + (count + t2) * cw, y + rowHole, cw, rowPar, tails[t2].p, parFg, parBg, 9, true);
+  }
+
+  for (var k = 0; k < count; k++) {
+    var idx = first - 1 + k;
+    var sv = scores ? scores[idx] : null;
+    var pvv = pars ? pars[idx] : null;
+    var blank = (sv === null || sv === undefined || pvv === null || pvv === undefined);
+    drawCell(dc, x + k * cw, y + rowHole + rowPar, cw, rowScore,
+      blank ? "-" : sign(sv - pvv), blank ? new Color("#4a4a4a") : deltaColor(sv - pvv), gridBg, 10, true);
+  }
+  for (var t3 = 0; t3 < tails.length; t3++) {
+    var tt = tails[t3];
+    drawCell(dc, x + (count + t3) * cw, y + rowHole + rowPar, cw, rowScore,
+      tt.any ? sign(tt.s - tt.p) : "-", tt.any ? deltaColor(tt.s - tt.p) : new Color("#4a4a4a"), tailBg, 10, true);
+  }
+  return y + rowHole + rowPar + rowScore;
+}
+
+function tally(pars, scores, from, to) {
+  var s = 0, p = 0, any = false;
+  for (var i = from; i < to; i++) {
+    if (pars && pars[i] !== undefined) p += pars[i];
+    if (scores && scores[i] !== undefined) { s += scores[i]; any = true; }
+  }
+  return { s: s, p: p, any: any };
+}
+
+function avgToPar(rounds, holeCount) {
+  var list = (rounds || []).filter(function (r) { return (r.holes || 18) === holeCount && typeof r.toPar === "number"; });
+  if (!list.length) return null;
+  var t = 0;
+  for (var i = 0; i < list.length; i++) t += list[i].toPar;
+  return Math.round(t / list.length);
+}
+
+function buildCard(data, draft) {
+  var W = 345, H = 345;
+  var dc = new DrawContext();
+  dc.size = new Size(W, H);
+  dc.opaque = true;
+  dc.respectScreenScale = true;
+  dc.setFillColor(new Color("#0b0b0d"));
+  dc.fillRect(new Rect(0, 0, W, H));
+
+  var gold = new Color("#d4af37"), dim = new Color("#8a8a8a"), white = new Color("#f2f0ea");
+
+  // header
+  drawCell(dc, 10, 8, 150, 14, "HAWAII GOLF", gold, null, 10, true, "left");
+  var st = data ? data.stats : null;
+  drawCell(dc, W - 110, 8, 100, 14, st ? (st.coursesPlayed + "/" + st.coursesTotal + " courses") : "", dim, null, 9, false, "right");
+
+  var rounds = (data && data.rounds) ? data.rounds : [];
+  // Prefer a round that actually has hole detail for the grid.
+  var detail = null, round = null;
+  if (draft) {
+    round = draft;
+    detail = { pars: draft.pars, scores: draft.scores };
+  } else {
+    for (var i = 0; i < rounds.length; i++) {
+      var pn = parseNotes(rounds[i]);
+      if (pn) { detail = pn; round = rounds[i]; break; }
+    }
+    if (!round && rounds.length) round = rounds[0];
+  }
+
+  if (!round) {
+    drawCell(dc, 12, 140, W - 24, 20, "No rounds yet", dim, null, 12, false, "center");
+    drawCell(dc, 12, 166, W - 24, 16, "Tap to start your first card", gold, null, 10, true, "center");
+    return dc.getImage();
+  }
+
+  var pars = detail ? detail.pars : null;
+  var scores = detail ? detail.scores : null;
+  var played = round.holesPlayed || round.holes || (scores ? scores.length : 18);
+  var parUsed = round.parsUsed || round.par || (pars ? tally(pars, null, 0, played).p : 0);
+  var total = (round.score !== undefined && round.score !== null) ? round.score : (scores ? tally(pars, scores, 0, played).s : 0);
+  var toPar = (typeof round.toPar === "number") ? round.toPar : (total - parUsed);
+
+  drawCell(dc, 10, 24, 225, 18, round.course || "", white, null, 14, true, "left");
+  drawCell(dc, W - 118, 25, 108, 16, (draft ? "IN PLAY" : shortDate(round.date)), draft ? gold : dim, null, 9, false, "right");
+  drawCell(dc, 10, 42, 64, 26, String(total), white, null, 22, true, "left");
+  drawCell(dc, 68, 46, 66, 20, sign(toPar), deltaColor(toPar), null, 13, true, "left");
+  drawCell(dc, 136, 48, 198, 18, played + " holes  ·  par " + parUsed, dim, null, 9, false, "left");
+
+  var y = 74;
+  var front = Math.min(9, played);
+  var frontTally = tally(pars, scores, 0, front);
+  var frontTail = played > 9
+    ? [{ label: "OUT", s: frontTally.s, p: frontTally.p, any: frontTally.any }]
+    : [{ label: "TOTAL", s: frontTally.s, p: frontTally.p, any: frontTally.any }];
+  y = drawNine(dc, y, 1, front, pars, scores, W, frontTail) + 5;
+  if (played > 9) {
+    var back = played - 9;
+    var backTally = tally(pars, scores, 9, played);
+    var allTally = tally(pars, scores, 0, played);
+    y = drawNine(dc, y, 10, back, pars, scores, W, [
+      { label: "IN", s: backTally.s, p: backTally.p, any: backTally.any },
+      { label: "TOT", s: allTally.s, p: allTally.p, any: allTally.any }
+    ]) + 5;
+  }
+
+  if (!detail) {
+    drawCell(dc, 10, y + 2, W - 20, 14, "no hole detail on this round, tap to enter a new card", dim, null, 8, false, "center");
+    y += 18;
+  }
+
+  // ---- what is still out there: island progress + next course + recent form
+  var isl = (data && data.islandProgress) ? data.islandProgress : null;
+  var curIsl = null;
+  if (isl) {
+    var order = ["Oahu", "Maui", "Kauai", "Hawaii", "Molokai", "Lanai"];
+    for (var oi = 0; oi < order.length; oi++) {
+      var ip = isl[order[oi]];
+      if (ip && ip.played < ip.total) { curIsl = { name: order[oi], played: ip.played, total: ip.total }; break; }
+    }
+  }
+  var yb = y + 10;
+  if (curIsl) {
+    drawCell(dc, 10, yb, 74, 12, curIsl.name.toUpperCase(), gold, null, 8, true, "left");
+    var bx = 80, bw = W - 80 - 52, bh = 7, by = yb + 3;
+    dc.setFillColor(new Color("#23282b"));
+    dc.fillRect(new Rect(bx, by, bw, bh));
+    var frac = curIsl.total ? curIsl.played / curIsl.total : 0;
+    var fw = Math.max(frac > 0 ? 3 : 0, bw * frac);
+    dc.setFillColor(new Color("#3f7d4f"));
+    dc.fillRect(new Rect(bx, by, fw, bh));
+    drawCell(dc, W - 50, yb, 40, 12, curIsl.played + "/" + curIsl.total, new Color("#cfd6d9"), null, 8, false, "right");
+    yb += 16;
+  }
+
+  var nextName = "";
+  if (data && data.courses && data.coursesPlayedList) {
+    for (var ci = 0; ci < data.courses.length; ci++) {
+      if (data.coursesPlayedList.indexOf(data.courses[ci].name) === -1) { nextName = data.courses[ci].name + " · " + (data.courses[ci].island || ""); break; }
+    }
+  }
+  if (nextName) {
+    drawCell(dc, 10, yb, 44, 12, "NEXT", new Color("#6b7175"), null, 8, true, "left");
+    drawCell(dc, 54, yb, W - 64, 12, nextName, gold, null, 9, true, "left");
+    yb += 18;
+  }
+
+  var recent = [];
+  for (var ri = 0; ri < rounds.length && recent.length < 4; ri++) recent.push(rounds[ri]);
+  if (recent.length) {
+    drawCell(dc, 10, yb, 120, 10, "RECENT", new Color("#6b7175"), null, 7, true, "left");
+    yb += 12;
+    for (var rj = 0; rj < recent.length; rj++) {
+      var rr = recent[rj];
+      drawCell(dc, 10, yb, 56, 12, shortDate(rr.date), dim, null, 8, false, "left");
+      drawCell(dc, 66, yb, 200, 12, rr.course || "", new Color("#cfd6d9"), null, 8, false, "left");
+      var tp = (typeof rr.toPar === "number") ? rr.toPar : null;
+      drawCell(dc, W - 70, yb, 60, 12, String(rr.score) + (tp === null ? "" : " " + sign(tp)), tp === null ? white : deltaColor(tp), null, 8, true, "right");
+      yb += 13;
+    }
+  }
+
+  // footer
+  if (st) {
+    var a18 = avgToPar(rounds, 18), a9 = avgToPar(rounds, 9);
+    var avgTxt = a18 !== null ? ("AVG18 " + sign(a18)) : (a9 !== null ? ("AVG9 " + sign(a9)) : "AVG -");
+    drawCell(dc, 10, H - 42, 100, 14, "ROUNDS " + st.totalRounds, white, null, 9, true, "left");
+    drawCell(dc, 118, H - 42, 96, 14, "BEST " + sign(st.bestToPar), white, null, 9, true, "left");
+    drawCell(dc, 220, H - 42, 115, 14, avgTxt, white, null, 9, true, "left");
+  }
+  drawCell(dc, 10, H - 26, W - 90, 14, "TAP TO EDIT THE CARD", gold, null, 9, true, "left");
+  drawCell(dc, W - 80, H - 26, 70, 14, "play ▸", dim, null, 9, false, "right");
+  return dc.getImage();
+}
+
+function renderWidget() {
+  var w = new ListWidget();
+  w.backgroundColor = new Color("#0b0b0d");
+  w.setPadding(0, 0, 0, 0);
+  var got = getData();
+  var draft = readJSON(path(DRAFT));
+  try {
+    w.addImage(buildCard(got.data, draft));
+  } catch (e) {
+    var t = w.addText("HAWAII GOLF\ndraw error: " + String(e).slice(0, 60));
+    t.font = Font.systemFont(9);
+    t.textColor = Color.white();
+  }
+  w.url = "scriptable:///run/" + encodeURIComponent(SELF);
+  w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000);
+  Script.setWidget(w);
+  Script.complete();
+}
+
+/* ============================================================
+   INTERACTIVE CARD (runs when you tap the widget)
+   ============================================================ */
+function buildHTML(data, draft) {
+  var courses = (data && data.courses) ? data.courses : [];
+  var lastCourse = (data && data.stats && data.stats.lastCourse) ? data.stats.lastCourse : (draft && draft.course) || "Ala Wai";
+
+  var courseOpts = courses.map(function (c) {
+    return '<option value="' + c.name + '" data-island="' + (c.island || "Oahu") + '">' + c.name + " · " + (c.island || "Oahu") + "</option>";
+  }).join("");
+
+  var init = {
+    course: (draft && draft.course) || lastCourse,
+    island: (draft && draft.island) || "Oahu",
+    holes: (draft && draft.holes) || 18,
+    pars: (draft && draft.pars) || [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4],
+    scores: (draft && draft.scores) || []
+  };
+
+  return `<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#0b0b0d;color:#f2f0ea;font-family:-apple-system,Helvetica,sans-serif;padding:10px 10px 96px}
+h1{font-size:15px;margin:0 0 8px;letter-spacing:.5px;color:#d4af37}
+select{width:100%;padding:10px;border-radius:9px;border:1px solid #2a2f33;background:#15181b;color:#f2f0ea;font-size:15px;margin-bottom:8px}
+.seg{display:flex;gap:6px;margin-bottom:10px}
+.seg button{flex:1;padding:8px;border-radius:8px;border:1px solid #2a2f33;background:#15181b;color:#9a9a9a;font-size:13px;font-weight:600}
+.seg button.on{background:#1f6f43;color:#fff;border-color:#2f8f5b}
+.nine{display:grid;grid-template-columns:repeat(9,1fr);gap:3px;margin-bottom:4px}
+.hd{font-size:9px;text-align:center;color:#dff0e4;background:#1f6f43;border-radius:4px;padding:3px 0;font-weight:700}
+.cell{background:#141618;border-radius:6px;padding:3px 0 4px;text-align:center}
+.par{font-size:9px;color:#1a1a1a;background:#f2c94c;border-radius:3px;margin:0 2px 3px;padding:1px 0;font-weight:700}
+.sc{font-size:16px;font-weight:800;line-height:1.1}
+.ar{display:flex;flex-direction:column;gap:2px;margin-top:2px}
+.ar button{border:0;border-radius:5px;background:#22282c;color:#cfd6d9;font-size:11px;padding:5px 0;font-weight:700}
+.ar button:active{background:#2f8f5b;color:#fff}
+.under{color:#7ddc9a}.over{color:#ff8f7d}.even{color:#d8d8d8}.blank{color:#4a4a4a}
+.bar{position:fixed;left:0;right:0;bottom:0;background:#101315;border-top:1px solid #23282b;padding:10px 12px 14px;display:flex;gap:8px;align-items:center}
+.tot{font-size:12px;color:#9a9a9a;flex:1}
+.tot b{color:#f2f0ea;font-size:15px}
+.save{flex:0 0 auto;background:#1f6f43;color:#fff;border:0;border-radius:10px;font-size:15px;font-weight:700;padding:13px 20px}
+.save:active{background:#2f8f5b}
+.msg{font-size:11px;color:#7ddc9a;min-height:14px;margin-top:6px}
+.note{font-size:10px;color:#6b7175;margin-top:10px;line-height:1.5}
+</style></head><body>
+<h1>HAWAII GOLF · SCORECARD</h1>
+<select id="course">${courseOpts}</select>
+<div class="seg">
+  <button id="b9" onclick="setHoles(9)">Front 9</button>
+  <button id="b18" onclick="setHoles(18)">Full 18</button>
+</div>
+<div class="nine" id="h9"></div>
+<div class="nine" id="s9"></div>
+<div class="nine" id="h18"></div>
+<div class="nine" id="s18"></div>
+<div class="bar">
+  <div class="tot" id="tot"></div>
+  <button class="save" id="save" onclick="saveRound()">Save</button>
+</div>
+<div class="note">Arrow up adds a stroke, arrow down removes one. Tap a yellow par cell to cycle par 3 / 4 / 5 / 6. Nothing is saved until you hit Save.</div>
+<div class="msg" id="msg"></div>
+<script>
+var D = ${JSON.stringify(init)};
+var ROUNDS = ${JSON.stringify(ROUNDS)};
+var TEMPLATES = ${JSON.stringify(TEMPLATES)};
+var pars = D.pars.slice(0, 18), scores = [];
+for (var i = 0; i < (D.scores || []).length; i++) scores[i] = D.scores[i];
+var holes = D.holes || 18;
+
+var sel = document.getElementById("course");
+sel.value = D.course;
+if (!sel.value) sel.selectedIndex = 0;
+sel.onchange = function () { D.course = sel.value; loadTemplate(sel.value); };
+
+function setHoles(n) { holes = n; render(); }
+function loadTemplate(course) {
+  document.getElementById("msg").textContent = "Loading par card…";
+  fetch(TEMPLATES, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({course: course})})
+    .then(function(r){return r.json();})
+    .then(function(t){
+      if (t && t.ok && t.template && t.template.pars && t.template.pars.length) {
+        pars = t.template.pars.slice(0, 18);
+        if (t.template.island) D.island = t.template.island;
+        document.getElementById("msg").textContent = "Saved par card loaded (" + pars.length + " holes).";
+      } else {
+        pars = [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4];
+        document.getElementById("msg").textContent = "No saved card for this course, starting at par 4. Tap par cells to fix them.";
+      }
+      render();
+    })
+    .catch(function(){ document.getElementById("msg").textContent = "Could not load par card."; render(); });
+}
+function bump(i, d) {
+  var base = (scores[i] === undefined) ? pars[i] : scores[i];
+  scores[i] = Math.max(1, Math.min(15, base + d));
+  render();
+}
+function bumpPar(i) {
+  var order = [3,4,5,6];
+  var cur = order.indexOf(pars[i]);
+  pars[i] = order[(cur + 1) % order.length];
+  render();
+}
+function deltasFor(from, to) {
+  var s = 0, p = 0, n = 0;
+  for (var i = from; i < to; i++) {
+    if (scores[i] !== undefined && scores[i] !== null) { s += scores[i]; p += pars[i]; n++; }
+  }
+  return { s: s, p: p, n: n, any: n > 0 };
+}
+function cls(d) { return d < 0 ? "under" : (d > 0 ? "over" : "even"); }
+function sgn(n) { return n === 0 ? "E" : (n > 0 ? "+" + n : "" + n); }
+
+function render() {
+  var front = Math.min(9, holes);
+  var back = Math.max(0, holes - 9);
+  var h9 = "", s9 = "", h18 = "", s18 = "";
+  for (var i = 0; i < front; i++) {
+    h9 += '<div class="hd">' + (i + 1) + "</div>";
+    var sc = scores[i];
+    var shown = sc === undefined ? "-" : sc;
+    s9 += '<div class="cell"><div class="par" onclick="bumpPar(' + i + ')">' + pars[i] + "</div>"
+        + '<div class="sc ' + (sc === undefined ? "blank" : cls(sc - pars[i])) + '">' + shown + "</div>"
+        + '<div class="ar"><button onclick="bump(' + i + ',1)">▲</button><button onclick="bump(' + i + ',-1)">▼</button></div></div>';
+  }
+  for (var j = 9; j < 9 + back; j++) {
+    h18 += '<div class="hd">' + (j + 1) + "</div>";
+    var sc2 = scores[j];
+    var shown2 = sc2 === undefined ? "-" : sc2;
+    s18 += '<div class="cell"><div class="par" onclick="bumpPar(' + j + ')">' + pars[j] + "</div>"
+         + '<div class="sc ' + (sc2 === undefined ? "blank" : cls(sc2 - pars[j])) + '">' + shown2 + "</div>"
+         + '<div class="ar"><button onclick="bump(' + j + ',1)">▲</button><button onclick="bump(' + j + ',-1)">▼</button></div></div>';
+  }
+  document.getElementById("h9").innerHTML = h9;
+  document.getElementById("s9").innerHTML = s9;
+  document.getElementById("h18").innerHTML = h18;
+  document.getElementById("s18").innerHTML = s18;
+  document.getElementById("b9").className = holes === 9 ? "on" : "";
+  document.getElementById("b18").className = holes === 18 ? "on" : "";
+
+  var f = deltasFor(0, front), b = deltasFor(9, 9 + back);
+  var line = "";
+  if (f.any && (holes > 9)) line += "OUT <b>" + f.s + " (" + sgn(f.s - f.p) + ")</b>  ";
+  if (holes > 9) line += "IN <b>" + (b.any ? b.s + " (" + sgn(b.s - b.p) + ")" : "—") + "</b>  ";
+  var totS = f.s + (holes > 9 ? b.s : 0), totP = f.p + (holes > 9 ? b.p : 0);
+  line += "TOTAL <b>" + (f.any || b.any ? totS + " (" + sgn(totS - totP) + ")" : "—") + "</b>";
+  document.getElementById("tot").innerHTML = line;
+}
+
+function saveRound() {
+  var front = Math.min(9, holes), back = Math.max(0, holes - 9);
+  var usedPars = pars.slice(0, front).concat(pars.slice(9, 9 + back));
+  var usedScores = [];
+  for (var i = 0; i < front; i++) if (scores[i] === undefined) usedScores.push(pars[i]); else usedScores.push(scores[i]);
+  for (var j = 9; j < 9 + back; j++) if (scores[j] === undefined) usedScores.push(pars[j]); else usedScores.push(scores[j]);
+  var body = {
+    action: "create",
+    course: sel.value || D.course,
+    island: D.island || "Oahu",
+    date: new Date().toISOString().slice(0, 10),
+    score: usedScores.reduce(function (a, b) { return a + b; }, 0),
+    parsUsed: usedPars.reduce(function (a, b) { return a + b; }, 0),
+    holesPlayed: usedScores.length,
+    notes: "Hole by hole: " + usedScores.join("/") + " (par " + usedPars.join("/") + ")"
+  };
+  var btn = document.getElementById("save");
+  btn.textContent = "Saving…";
+  fetch(ROUNDS, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})
+    .then(function(r){return r.json();})
+    .then(function(res){
+      if (res && res.ok) {
+        fetch(TEMPLATES, {method:"POST", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({action:"save", course: body.course, island: body.island, pars: usedPars})}).catch(function(){});
+        btn.textContent = "Saved ✓";
+        document.getElementById("msg").textContent = "Round saved. Close this screen and the widget updates.";
+        scores = [];
+        setTimeout(function(){ btn.textContent = "Save"; render(); }, 1600);
+      } else {
+        btn.textContent = "Save";
+        document.getElementById("msg").textContent = "Could not save: " + ((res && res.error) || "unknown");
+      }
+    })
+    .catch(function(e){
+      btn.textContent = "Save";
+      document.getElementById("msg").textContent = "Network error: " + String(e).slice(0, 60);
+    });
+}
+render();
+if (!D.course) sel.selectedIndex = 0;
+</script></body></html>`;
+}
+
+function runInteractive() {
+  var got = getData();
+  var draft = readJSON(path(DRAFT));
+  var web = new WebView();
+  web.loadHTML(buildHTML(got.data, draft), "https://base44.app/");
+  web.present().then(function () {
+    return web.evaluateJavaScript("JSON.stringify({course: sel.value, island: D.island, holes: holes, pars: pars, scores: scores})")
+      .then(function (raw) {
+        var st = null;
+        try { st = JSON.parse(raw); } catch (e) {}
+        if (st && st.scores && st.scores.length) writeJSON(path(DRAFT), st);
+        else dropFile(path(DRAFT));
+      })
+      .catch(function () {});
+  }).then(function () {
+    dropFile(path(CACHE));
+    Script.complete();
+  });
+}
+
+/* ---------------- entry ---------------- */
+if (isWidget) renderWidget(); else runInteractive();
