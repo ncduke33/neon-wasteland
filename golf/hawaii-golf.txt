@@ -116,23 +116,21 @@ function blankDraft(data) {
 function buildCard(data) {
   var w = new ListWidget();
   var cream = new Color("#f3e6bd"), light = new Color("#d7e6d9"), dim = new Color("#9bb7a4");
-  var plus = new Color("#1f7a4a"), minus = new Color("#1b3f2c");
-  var paper = new Color("#f8f4e7"), ink = new Color("#16281c"), gold = new Color("#f6e08a");
+  var plusCol = new Color("#1f7a4a"), minusCol = new Color("#14372a");
+  var paper = new Color("#f8f4e7");
   var g = new LinearGradient();
   g.colors = [new Color("#12492c"), new Color("#08301c")];
   g.locations = [0, 1];
   w.backgroundGradient = g;
-  w.setPadding(9, 10, 7, 10);
+  w.setPadding(10, 14, 10, 14);
 
   var st = data ? data.stats : null;
   var rounds = (data && data.rounds) ? data.rounds : [];
   var draft = readJSON(path(DRAFT)) || blankDraft(data);
   if (!draft.scores) draft.scores = [];
   if (!draft.pars) draft.pars = [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4];
-  var page = (Number(draft.page) === 2) ? 2 : 1;
-  var base = (page === 2) ? 9 : 0;
 
-  // No round in progress yet: mirror the last saved card so the widget is not a row of dashes.
+  // No round in progress yet: mirror the last saved card so it is not a blank screen.
   var preview = !!draft.preview && !(draft.scores && draft.scores.length);
   var shownScores = draft.scores || [];
   var courseName = draft.course;
@@ -147,66 +145,82 @@ function buildCard(data) {
     }
   }
 
-  // row 1: title + progress
-  var r1 = w.addStack(); r1.layoutHorizontally(); r1.centerAlignContent();
-  wp(r1, "HAWAII GOLF", 10.5, cream, true);
-  r1.addSpacer();
-  var hdr = st ? (st.coursesPlayed + "/" + st.coursesTotal + " HI") : "";
-  if (st && st.worldPlayed) hdr += " +" + st.worldPlayed + "W";
-  if (hdr) wp(r1, hdr, 8, dim, true);
-  w.addSpacer(3);
+  var hole = Number(draft.hole) || 1;
+  if (hole < 1) hole = 1;
+  if (hole > 18) hole = 18;
+  var idx = hole - 1;
+  var par = draft.pars[idx] || 4;
+  var score = (shownScores[idx] === undefined || shownScores[idx] === null) ? null : shownScores[idx];
 
-  // row 2: course + front/back switch
-  var r2 = w.addStack(); r2.layoutHorizontally(); r2.centerAlignContent();
-  var ct = wp(r2, courseName || "Pick a course", 9.5, paper, true);
-  ct.lineLimit = 1;
-  ct.minimumScaleFactor = 0.6;
-  r2.addSpacer();
-  chip(r2, page === 2 ? "FRONT 1-9" : "BACK 10-18", cream, plus, 7.5, selfURL("page=" + (page === 2 ? 1 : 2)), 5);
-  w.addSpacer(3);
-
-  // the card
-  var sw = 390;
-  try { if (typeof Device !== "undefined" && Device.screenSize) sw = Device.screenSize().width; } catch (e) { sw = 390; }
-  var colW = Math.max(24, Math.floor((sw - 32 - 8 - 16) / 9));
-
-  var card = w.addStack(); card.layoutVertically(); card.backgroundColor = paper; card.cornerRadius = 8;
-  card.setPadding(4, 4, 4, 4); card.spacing = 2;
-
-  var cols = card.addStack(); cols.layoutHorizontally(); cols.spacing = 2; cols.centerAlignContent();
-  var s9 = 0, p9 = 0, any9 = false;
-  for (var i = 0; i < 9; i++) {
-    var idx = base + i;
-    var col = cols.addStack(); col.layoutVertically(); col.spacing = 1;
-    col.size = new Size(colW, 0);
-    wp(col, String(idx + 1), 7.5, new Color("#8a937f"), true, true);
-
-    var pc = col.addStack(); pc.backgroundColor = gold; pc.cornerRadius = 3; pc.setPadding(1, 0, 1, 0); pc.centerAlignContent();
-    wp(pc, String(draft.pars[idx] || 4), 7.5, ink, true, true);
-
-    var sv = (shownScores[idx] === undefined || shownScores[idx] === null) ? null : shownScores[idx];
-    if (draft.pars[idx]) p9 += (sv === null ? 0 : draft.pars[idx]);
-    if (sv !== null) { s9 += sv; any9 = true; }
-    wp(col, sv === null ? "-" : String(sv), 13, sv === null ? new Color("#b8b5a4") : ink, true, true);
-
-    var up = col.addStack(); up.backgroundColor = plus; up.cornerRadius = 3; up.setPadding(1, 0, 1, 0); up.centerAlignContent();
-    wp(up, "+", 10, Color.white(), true, true);
-    up.url = selfURL("bump=" + (idx + 1) + "&d=1&page=" + page);
-
-    var dn = col.addStack(); dn.backgroundColor = minus; dn.cornerRadius = 3; dn.setPadding(1, 0, 1, 0); dn.centerAlignContent();
-    wp(dn, "-", 10, light, true, true);
-    dn.url = selfURL("bump=" + (idx + 1) + "&d=-1&page=" + page);
+  // how far the round has actually got, and how it stands against par on played holes
+  var thru = 0, tot = 0, parPlayed = 0, played = 0;
+  for (var i = 0; i < 18; i++) {
+    var sv = shownScores[i];
+    if (sv === undefined || sv === null) continue;
+    if (i === thru) { thru = i + 1; }
+    tot += sv; parPlayed += (draft.pars[i] || 4); played++;
   }
 
-  var tr = card.addStack(); tr.layoutHorizontally(); tr.centerAlignContent();
-  var lbl = (page === 2) ? "IN " : "OUT ";
-  wp(tr, lbl + (any9 ? s9 + " (" + sign(s9 - p9) + ")" : "-"), 8.5, ink, true);
-  tr.addSpacer();
-  chip(tr, "SAVE", Color.white(), new Color("#1f7a4a"), 7.5, selfURL("save=1"), 7);
+  // row 1: name + course progress
+  var r1 = w.addStack(); r1.layoutHorizontally(); r1.centerAlignContent();
+  wp(r1, "HAWAII GOLF", 11, cream, true);
+  r1.addSpacer();
+  if (st) wp(r1, st.coursesPlayed + "/" + st.coursesTotal + " HI", 8.5, dim, true);
   w.addSpacer(3);
 
-  // row 5: island progress + next course
-  var r5 = w.addStack(); r5.layoutHorizontally(); r5.centerAlignContent();
+  // row 2: course + standing
+  var r2 = w.addStack(); r2.layoutHorizontally(); r2.centerAlignContent();
+  var ct = wp(r2, courseName || "Pick a course", 10, paper, true);
+  ct.lineLimit = 1; ct.minimumScaleFactor = 0.6;
+  r2.addSpacer();
+  var stand = played ? (tot + "  " + sign(tot - parPlayed)) : "no scores yet";
+  wp(r2, stand, 10, played ? cream : dim, true);
+  w.addSpacer(4);
+
+  // row 3: which hole + its par
+  var r3 = w.addStack(); r3.layoutHorizontally(); r3.centerAlignContent();
+  wp(r3, "HOLE " + hole + " OF 18", 9, dim, true);
+  r3.addSpacer();
+  wp(r3, "PAR " + par, 9, dim, true);
+  w.addSpacer(2);
+
+  // row 4: the one hole, with its arrows
+  var big = w.addStack(); big.layoutHorizontally(); big.centerAlignContent(); big.spacing = 0;
+
+  var minus = big.addStack();
+  minus.backgroundColor = minusCol; minus.cornerRadius = 12;
+  minus.size = new Size(52, 42);
+  minus.centerAlignContent();
+  var mt = wp(minus, "-", 26, light, true, true);
+  minus.url = selfURL("bump=" + hole + "&d=-1&hole=" + hole);
+
+  big.addSpacer();
+
+  var mid = big.addStack(); mid.layoutVertically(); mid.centerAlignContent();
+  wp(mid, score === null ? "-" : String(score), 40, score === null ? dim : paper, true, true);
+  wp(mid, score === null ? "tap + to score" : (score === par ? "even" : (score < par ? (par - score) + " under" : (score - par) + " over")), 8.5, dim, false, true);
+
+  big.addSpacer();
+
+  var plus = big.addStack();
+  plus.backgroundColor = plusCol; plus.cornerRadius = 12;
+  plus.size = new Size(52, 42);
+  plus.centerAlignContent();
+  var pt = wp(plus, "+", 26, Color.white(), true, true);
+  plus.url = selfURL("bump=" + hole + "&d=1&hole=" + hole);
+  w.addSpacer(6);
+
+  // row 5: navigation + save + full view
+  var r5 = w.addStack(); r5.layoutHorizontally(); r5.centerAlignContent(); r5.spacing = 6;
+  chip(r5, "< HOLE", cream, minusCol, 8.5, selfURL("hole=" + (hole > 1 ? hole - 1 : 18)), 8);
+  chip(r5, "HOLE >", cream, minusCol, 8.5, selfURL("hole=" + (hole < 18 ? hole + 1 : 1)), 8);
+  r5.addSpacer();
+  chip(r5, "SAVE", Color.white(), new Color("#1f7a4a"), 8.5, selfURL("save=1"), 8);
+  chip(r5, "FULL CARD", cream, new Color("#1f7a4a"), 8.5, selfURL("card=1"), 8);
+  w.addSpacer(3);
+
+  // row 6: island progress + next course
+  var r6 = w.addStack(); r6.layoutHorizontally(); r6.centerAlignContent();
   var ip = (data && data.islandProgress) ? data.islandProgress : null;
   var islandTxt = "";
   if (ip) {
@@ -215,15 +229,15 @@ function buildCard(data) {
       if (ip[keys[z]].played < ip[keys[z]].total) { islandTxt = keys[z].toUpperCase() + " " + ip[keys[z]].played + "/" + ip[keys[z]].total; break; }
     }
   }
-  if (islandTxt) wp(r5, islandTxt, 8, cream, true);
-  r5.addSpacer();
+  if (islandTxt) wp(r6, islandTxt, 8, cream, true);
+  r6.addSpacer();
   var nextName = "";
   var courses = (data && data.courses) ? data.courses : [];
-  var played = (data && data.coursesPlayedList) ? data.coursesPlayedList : [];
-  for (var n = 0; n < courses.length; n++) if (played.indexOf(courses[n].name) === -1) { nextName = courses[n].name; break; }
-  wp(r5, nextName ? ("NEXT " + nextName) : "ALL 73 PLAYED", 8, dim, false);
+  var playedList = (data && data.coursesPlayedList) ? data.coursesPlayedList : [];
+  for (var n = 0; n < courses.length; n++) if (playedList.indexOf(courses[n].name) === -1) { nextName = courses[n].name; break; }
+  wp(r6, nextName ? ("NEXT " + nextName) : "ALL 73 PLAYED", 8, dim, false);
 
-  w.url = selfURL("");
+  w.url = selfURL("card=1");
   w.refreshAfterDate = new Date(Date.now() + 60 * 1000);
   return w;
 }
@@ -559,7 +573,7 @@ function wipDraft() {
   return d;
 }
 
-function applyBump(hole, delta, page) {
+function applyBump(hole, delta, page, keepHole) {
   var d = wipDraft();
   if (d.preview) { d.scores = []; d.preview = false; }
   var i = Number(hole) - 1;
@@ -571,6 +585,7 @@ function applyBump(hole, delta, page) {
   if (next > 15) next = 15;
   d.scores[i] = next;
   if (page) d.page = Number(page);
+  if (keepHole) d.hole = Math.min(18, Math.max(1, Number(keepHole)));
   writeJSON(path(DRAFT), d);
   return d;
 }
@@ -616,10 +631,17 @@ function saveFromWidget() {
 
 /* ---------------- entry ---------------- */
 if (query.bump) {
-  applyBump(query.bump, query.d, query.page);
+  applyBump(query.bump, query.d, query.page, query.hole);
+  showCardPreview();
+} else if (query.hole) {
+  var hd = wipDraft();
+  hd.hole = Math.min(18, Math.max(1, Number(query.hole)));
+  writeJSON(path(DRAFT), hd);
   showCardPreview();
 } else if (query.save) {
   saveFromWidget();
+} else if (query.card) {
+  runInteractive();
 } else if (query.page) {
   var pd = wipDraft();
   pd.page = Number(query.page) === 2 ? 2 : 1;
