@@ -606,10 +606,30 @@
     return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, meshes: scene.children.length };
   };
 
+  var perf = { frames: 0, acc: 0, step: 0 };
+  function adapt(dt) {
+    perf.frames++; perf.acc += dt;
+    if (perf.acc < 1.6) return;
+    var fps = perf.frames / perf.acc;
+    perf.frames = 0; perf.acc = 0;
+    if (fps < 26 && perf.step === 0) {
+      perf.step = 1;
+      renderer.setPixelRatio(1);
+      renderer.setSize(A.W, A.H, false);
+      A.quality = "reduced";
+    } else if (fps < 26 && perf.step === 1) {
+      perf.step = 2;
+      renderer.setPixelRatio(0.8);
+      renderer.setSize(A.W, A.H, false);
+      A.quality = "low";
+    }
+  }
+
   A.render = function () {
     if (!A.ok) return;
     var dt = Math.min(0.05, clock.getDelta());
     time += dt;
+    adapt(dt);
 
     if (coreGroup && coreGroup.userData.orb) {
       coreGroup.userData.orb.rotation.y += dt * 0.8;
