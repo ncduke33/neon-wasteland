@@ -1,0 +1,245 @@
+// ============================================================
+// HAWAII GOLF — Scriptable widget  (finished build)
+// Last round, season numbers, island progress, next course.
+// Tap the widget to open the Live Round script and play.
+// ES5 only: no template literals, no async/await.
+// ============================================================
+
+var API = "https://the-berry-bot-45c0d4c8.base44.app/functions/golfRounds";
+var CACHE = "hawaii_golf_cache.json";
+var LIVE_SCRIPT = "Golf Live Round";   // must match the Live Round script's name in Scriptable
+var APP_URL = "https://app.base44.com/apps/692a4a39e5adb5de7832bfb4";
+
+var GOLD = new Color("#d4af37");
+var DIM = new Color("#8a8a8a");
+var WHITE = new Color("#f2f0ea");
+var FAIR = new Color("#3f7d4f");
+var GREEN = new Color("#7ddc9a");
+
+function fm() { return FileManager.local(); }
+function cachePath() { return fm().joinPath(fm().documentsDirectory(), CACHE); }
+
+function readCache() {
+  try {
+    var p = cachePath();
+    if (!fm().fileExists(p)) return null;
+    return JSON.parse(fm().readString(p));
+  } catch (e) { return null; }
+}
+
+function writeCache(obj) {
+  try { fm().writeString(cachePath(), JSON.stringify(obj)); } catch (e) {}
+}
+
+function fetchStats() {
+  var req = new Request(API);
+  req.method = "GET";
+  req.timeoutInterval = 12;
+  try {
+    var data = req.loadJSON();
+    if (data && data.ok) { writeCache(data); return { data: data, stale: false }; }
+  } catch (e) {}
+  var cached = readCache();
+  if (cached) return { data: cached, stale: true };
+  return { data: null, stale: false };
+}
+
+function sign(n) {
+  if (n === null || n === undefined || isNaN(n)) return "-";
+  if (n === 0) return "E";
+  return (n > 0 ? "+" : "") + n;
+}
+
+function shortDate(iso) {
+  if (!iso) return "";
+  var p = String(iso).split("-");
+  if (p.length !== 3) return iso;
+  var m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var mi = parseInt(p[1], 10) - 1;
+  return (m[mi] || p[1]) + " " + parseInt(p[2], 10);
+}
+
+function pick(rounds, holes) {
+  var out = [];
+  for (var i = 0; i < rounds.length; i++) {
+    if ((rounds[i].holes || 18) === holes) out.push(rounds[i]);
+  }
+  return out;
+}
+function avgToPar(list) {
+  if (!list.length) return null;
+  var t = 0;
+  for (var i = 0; i < list.length; i++) t += list[i].toPar || 0;
+  return Math.round(t / list.length);
+}
+function bestToPar(list) {
+  if (!list.length) return null;
+  var b = list[0].toPar;
+  for (var i = 1; i < list.length; i++) if (list[i].toPar < b) b = list[i].toPar;
+  return b;
+}
+
+var res = fetchStats();
+var data = res.data;
+
+var w = new ListWidget();
+w.backgroundColor = new Color("#0b0b0d");
+w.setPadding(14, 15, 13, 15);
+w.url = "scriptable:///run/" + encodeURIComponent(LIVE_SCRIPT);
+w.refreshAfterDate = new Date(Date.now() + 30 * 60 * 1000);
+
+function header(tag) {
+  var h = w.addStack();
+  h.layoutHorizontally();
+  h.centerAlignContent();
+  var t = h.addText("HAWAII GOLF");
+  t.font = Font.boldSystemFont(11);
+  t.textColor = GOLD;
+  h.addSpacer();
+  var g = h.addText(tag);
+  g.font = Font.boldSystemFont(11);
+  g.textColor = WHITE;
+  return h;
+}
+
+if (!data || !data.stats) {
+  header("OFFLINE");
+  w.addSpacer(8);
+  var e0 = w.addText("Could not reach your round data.");
+  e0.font = Font.systemFont(11);
+  e0.textColor = DIM;
+  var e1 = w.addText("Open the widget once you have signal.");
+  e1.font = Font.systemFont(9);
+  e1.textColor = DIM;
+  w.addSpacer(6);
+  var e2 = w.addText("TAP TO PLAY ANYWAY");
+  e2.font = Font.boldSystemFont(9);
+  e2.textColor = GOLD;
+  w.url = "scriptable:///run/" + encodeURIComponent(LIVE_SCRIPT);
+  Script.setWidget(w);
+  Script.complete();
+} else {
+  var st = data.stats;
+  var rounds = data.rounds || [];
+  var islands = data.islandProgress || {};
+  var allCourses = data.courses || [];
+  var playedList = data.coursesPlayedList || [];
+
+  header(st.coursesPlayed + "/" + st.coursesTotal);
+
+  w.addSpacer(7);
+
+  // ---- last round ----
+  var last = rounds.length ? rounds[0] : null;
+  if (last) {
+    var row = w.addStack();
+    row.layoutHorizontally();
+    row.bottomAlignContent();
+    var big = row.addText(String(last.score));
+    big.font = Font.boldSystemFont(36);
+    big.textColor = WHITE;
+    row.addSpacer(9);
+    var col = row.addStack();
+    col.layoutVertically();
+    var cn = col.addText(String(last.course || ""));
+    cn.font = Font.semiboldSystemFont(12);
+    cn.textColor = WHITE;
+    cn.lineLimit = 1;
+    var sub = col.addText(sign(last.toPar) + "  ·  " + (last.holes || 18) + " holes  ·  " + shortDate(last.date));
+    sub.font = Font.systemFont(9);
+    sub.textColor = GOLD;
+    row.addSpacer();
+    var tag = row.addText((last.holes || 18) === 9 ? "9" : "18");
+    tag.font = Font.boldSystemFont(9);
+    tag.textColor = new Color("#5c5c5c");
+  } else {
+    var none = w.addText("No rounds logged yet");
+    none.font = Font.systemFont(11);
+    none.textColor = DIM;
+  }
+
+  w.addSpacer(9);
+
+  // ---- season numbers ----
+  var r18 = pick(rounds, 18), r9 = pick(rounds, 9);
+  var labels = ["ROUNDS", "AVG +", "BEST"];
+  var vals = [
+    String(st.totalRounds),
+    String(avgToPar(r18) === null ? (avgToPar(r9) === null ? "-" : avgToPar(r9)) : avgToPar(r18)),
+    sign(bestToPar(r18) === null ? bestToPar(r9) : bestToPar(r18))
+  ];
+  var statsRow = w.addStack();
+  statsRow.layoutHorizontally();
+  for (var i = 0; i < labels.length; i++) {
+    var cell = statsRow.addStack();
+    cell.layoutVertically();
+    var lb = cell.addText(labels[i]);
+    lb.font = Font.systemFont(7);
+    lb.textColor = DIM;
+    var vl = cell.addText(vals[i]);
+    vl.font = Font.boldSystemFont(15);
+    vl.textColor = (i === 2 && vals[i].indexOf("-") === 0 && vals[i] !== "-") ? GREEN : WHITE;
+    if (i < labels.length - 1) statsRow.addSpacer();
+  }
+
+  w.addSpacer(9);
+
+  // ---- island progress ----
+  var order = ["Oahu", "Maui", "Kauai", "Hawaii", "Molokai", "Lanai"];
+  var cur = null;
+  for (var o = 0; o < order.length; o++) {
+    var ip = islands[order[o]];
+    if (ip && ip.played < ip.total) { cur = { name: order[o], played: ip.played, total: ip.total }; break; }
+  }
+  if (cur) {
+    var barRow = w.addStack();
+    barRow.layoutHorizontally();
+    barRow.centerAlignContent();
+    var ib = barRow.addText(cur.name.toUpperCase());
+    ib.font = Font.boldSystemFont(8);
+    ib.textColor = GOLD;
+    barRow.addSpacer(6);
+    var frac = cur.total ? cur.played / cur.total : 0;
+    var cells = 10;
+    var filled = Math.max(frac > 0 ? 1 : 0, Math.round(frac * cells));
+    var bar = barRow.addText("▰".repeat(filled) + "▱".repeat(cells - filled));
+    bar.font = Font.systemFont(9);
+    bar.textColor = frac > 0 ? FAIR : new Color("#333333");
+    barRow.addSpacer(6);
+    var cnt = barRow.addText(cur.played + "/" + cur.total);
+    cnt.font = Font.boldSystemFont(8);
+    cnt.textColor = WHITE;
+    w.addSpacer(7);
+  }
+
+  // ---- next course ----
+  var nextName = "All islands complete";
+  for (var c = 0; c < allCourses.length; c++) {
+    if (playedList.indexOf(allCourses[c].name) === -1) { nextName = allCourses[c].name; break; }
+  }
+  var nxt = w.addStack();
+  nxt.layoutHorizontally();
+  nxt.centerAlignContent();
+  var nl = nxt.addText("NEXT");
+  nl.font = Font.systemFont(7);
+  nl.textColor = DIM;
+  nxt.addSpacer(6);
+  var nc = nxt.addText(nextName);
+  nc.font = Font.semiboldSystemFont(10);
+  nc.textColor = GOLD;
+  nc.lineLimit = 1;
+  nxt.addSpacer();
+  var arrow = nxt.addText("PLAY ▸");
+  arrow.font = Font.boldSystemFont(7);
+  arrow.textColor = new Color("#4d4d4d");
+
+  if (res.stale) {
+    w.addSpacer(4);
+    var s = w.addText("offline copy");
+    s.font = Font.systemFont(7);
+    s.textColor = new Color("#5a5a5a");
+  }
+
+  Script.setWidget(w);
+  Script.complete();
+}
