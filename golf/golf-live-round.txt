@@ -1,0 +1,277 @@
+// HAWAII GOLF — LIVE ROUND (interactive hole by hole)
+// Tap the widget to open. Counts strokes per hole, remembers the par card,
+// and saves the round to the Daily Dashboard. ES5 only.
+
+var ROUNDS = "https://the-berry-bot-45c0d4c8.base44.app/functions/golfRounds";
+var TEMPLATES = "https://the-berry-bot-45c0d4c8.base44.app/functions/golfTemplates";
+var fm = FileManager.local();
+var STATE = fm.joinPath(fm.documentsDirectory(), "golf_live_round.json");
+var LAST = fm.joinPath(fm.documentsDirectory(), "golf_last_course.json");
+
+function loadJSON(path) {
+  if (!fm.fileExists(path)) return null;
+  try { return JSON.parse(fm.readString(path)); } catch (e) { return null; }
+}
+function saveJSON(path, obj) { fm.writeString(path, JSON.stringify(obj)); }
+function clearState() { if (fm.fileExists(STATE)) fm.remove(STATE); }
+function today() {
+  var d = new Date();
+  var m = d.getMonth() + 1, day = d.getDate();
+  return d.getFullYear() + "-" + (m < 10 ? "0" + m : m) + "-" + (day < 10 ? "0" + day : day);
+}
+function sum(a) { var t = 0; for (var i = 0; i < a.length; i++) t += a[i]; return t; }
+function sign(n) { return n > 0 ? "+" + n : (n === 0 ? "E" : "" + n); }
+
+function api(url, payload) {
+  var req = new Request(url);
+  req.method = "POST";
+  req.headers = { "Content-Type": "application/json" };
+  req.body = JSON.stringify(payload || {});
+  req.timeoutInterval = 20;
+  try { return req.loadJSON(); } catch (e) { return { ok: false, error: String(e) }; }
+}
+
+function bustWidgetCache() {
+  var names = ["hawaii_golf_cache.json", "oahu_golf_cache.json"];
+  for (var i = 0; i < names.length; i++) {
+    var p = fm.joinPath(fm.documentsDirectory(), names[i]);
+    try { if (fm.fileExists(p)) fm.remove(p); } catch (e) {}
+  }
+}
+
+function saveRound(st, done) {
+  var played = st.scores.length;
+  var parsUsed = sum(st.pars.slice(0, played));
+  var body = {
+    action: "create",
+    course: st.course,
+    island: st.island || "Oahu",
+    date: today(),
+    score: sum(st.scores),
+    parsUsed: parsUsed,
+    holesPlayed: played,
+    notes: "Hole by hole: " + st.scores.join("/") + " (par " + st.pars.join("/") + ")"
+  };
+  var r = api(ROUNDS, body);
+  if (r && r.ok) bustWidgetCache();
+  done(!!(r && r.ok), r, parsUsed);
+}
+
+function offerTemplateSave(st, then) {
+  var a = new Alert();
+  a.title = "Save the par card?";
+  a.message = "Remember " + st.pars.length + " holes for " + st.course + "? Next time you tee off there, pars load automatically.";
+  a.addAction("Save pars");
+  a.addAction("Not now");
+  a.present().then(function (i) {
+    if (i === 0) {
+      api(TEMPLATES, { action: "save", course: st.course, island: st.island, pars: st.pars });
+    }
+    if (then) then();
+  });
+}
+
+function finish(st) {
+  var played = st.scores.length;
+  if (played === 0) { clearState(); return; }
+  var parsUsed = sum(st.pars.slice(0, played));
+  var total = sum(st.scores);
+  var a = new Alert();
+  a.title = played < st.pars.length ? "Save partial round" : "Round complete";
+  a.message = st.course + "\n" + total + " over " + played + " holes (" + sign(total - parsUsed) + ")\nPar for those holes: " + parsUsed;
+  a.addAction("Save round");
+  a.addAction("Keep playing");
+  a.addCancelAction("Discard");
+  a.present().then(function (choice) {
+    if (choice === 1) return askHole(st);
+    if (choice === -1) { clearState(); return; }
+    saveRound(st, function (ok) {
+      var b = new Alert();
+      if (ok) {
+        clearState();
+        saveJSON(LAST, { course: st.course });
+        b.title = "Saved";
+        b.message = total + " at " + st.course + " is in the dashboard and the widget.";
+        b.addAction("Done");
+        b.present().then(function () {
+          if (!st.fromTemplate) offerTemplateSave(st, null);
+        });
+      } else {
+        b.title = "Could not save";
+        b.message = "Your card is still here. Try again with signal.";
+        b.addAction("OK");
+        b.present();
+      }
+    });
+  });
+}
+
+function askHole(st) {
+  var idx = st.scores.length;
+  if (idx >= st.pars.length) return finish(st);
+  var par = st.pars[idx];
+  var soFar = sum(st.scores);
+  var parSoFar = sum(st.pars.slice(0, idx));
+  var a = new Alert();
+  a.title = "Hole " + (idx + 1) + " of " + st.pars.length + "  (par " + par + ")";
+  a.message = st.course + "\n" + (idx === 0 ? "First hole. Let's go." : "Through " + idx + ": " + soFar + " (" + sign(soFar - parSoFar) + ")");
+  a.addTextField("strokes", String(par));
+  a.addAction("Next hole");
+  a.addAction("Change par");
+  a.addCancelAction("End round");
+  a.present().then(function (choice) {
+    if (choice === -1) return finish(st);
+
+    if (choice === 1) {
+      var p = new Alert();
+      p.title = "Par for hole " + (idx + 1);
+      p.addTextField("par", String(par));
+      p.addAction("Set");
+      p.addCancelAction("Back");
+      p.present().then(function (x) {
+        if (x === 0) {
+          var pv = parseInt(p.textFieldValue(0), 10);
+          if (!isNaN(pv) && pv >= 3 && pv <= 6) st.pars[idx] = pv;
+          saveJSON(STATE, st);
+        }
+        return askHole(st);
+      });
+      return;
+    }
+
+    var raw = parseInt(a.textFieldValue(0), 10);
+    if (isNaN(raw) || raw < 1 || raw > 15) raw = par;
+    st.scores.push(raw);
+    saveJSON(STATE, st);
+    askHole(st);
+  });
+}
+
+function startWithPars(course, island, pars, fromTemplate) {
+  var st = {
+    course: course,
+    island: island || "Oahu",
+    pars: pars,
+    scores: [],
+    fromTemplate: !!fromTemplate,
+    started: Date.now()
+  };
+  saveJSON(STATE, st);
+  saveJSON(LAST, { course: course });
+  askHole(st);
+}
+
+function readPars(st, course, holes, done) {
+  var a = new Alert();
+  a.title = course;
+  a.message = "Enter the par for each of " + holes + " holes, separated by commas.\nExample: 4,4,3,5,4,4,3,4,5,4,3,4,5,4,4,3,4,5\nLeave it blank for all par 4s and fix holes as you play.";
+  a.addTextField("pars", "");
+  a.addAction("Start round");
+  a.addCancelAction("Cancel");
+  a.present().then(function (i) {
+    if (i === -1) return;
+    var out = [];
+    var txt = (a.textFieldValue(0) || "").replace(/[^0-9, ]/g, "");
+    var parts = txt.split(",");
+    for (var k = 0; k < holes; k++) {
+      var v = parseInt((parts[k] || "").trim(), 10);
+      out.push(!isNaN(v) && v >= 3 && v <= 6 ? v : 4);
+    }
+    done(out);
+  });
+}
+
+function startRound() {
+  var last = loadJSON(LAST);
+  var a = new Alert();
+  a.title = "New round";
+  a.message = (last && last.course) ? "Last time: " + last.course : "Which course?";
+  if (last && last.course) {
+    a.addAction(last.course);
+    a.addAction("Different course");
+    a.addCancelAction("Cancel");
+    a.present().then(function (i) {
+      if (i === -1) return;
+      if (i === 0) return beginCourse(last.course);
+      return askCourse();
+    });
+    return;
+  }
+  askCourse();
+}
+
+function askCourse() {
+  var a = new Alert();
+  a.title = "New round";
+  a.message = "Course name";
+  a.addTextField("course", "Ala Wai");
+  a.addAction("Next");
+  a.addCancelAction("Cancel");
+  a.present().then(function (i) {
+    if (i === -1) return;
+    beginCourse(a.textFieldValue(0) || "Ala Wai");
+  });
+}
+
+function beginCourse(course) {
+
+    var t = api(TEMPLATES, { course: course });
+    if (t && t.ok && t.template && t.template.pars && t.template.pars.length) {
+      var b = new Alert();
+      b.title = course;
+      b.message = "Saved card found: " + t.template.pars.length + " holes, par " + t.template.totalPar + ".";
+      b.addAction("Use saved pars");
+      b.addAction("Enter new pars");
+      b.addCancelAction("Cancel");
+      b.present().then(function (choice) {
+        if (choice === -1) return;
+        if (choice === 0) return startWithPars(course, t.template.island, t.template.pars, true);
+        var c = new Alert();
+        c.title = course;
+        c.message = "How many holes?";
+        c.addTextField("holes", "18");
+        c.addAction("Next");
+        c.addCancelAction("Cancel");
+        c.present().then(function (x) {
+          if (x === -1) return;
+          var h = parseInt(c.textFieldValue(0), 10);
+          if (isNaN(h) || h < 1 || h > 18) h = 18;
+          readPars(null, course, h, function (pars) { startWithPars(course, t.template.island, pars, false); });
+        });
+      });
+      return;
+    }
+
+    var d = new Alert();
+    d.title = course;
+    d.message = "How many holes?";
+    d.addTextField("holes", "18");
+    d.addAction("Next");
+    d.addCancelAction("Cancel");
+    d.present().then(function (y) {
+      if (y === -1) return;
+      var h = parseInt(d.textFieldValue(0), 10);
+      if (isNaN(h) || h < 1 || h > 18) h = 18;
+      readPars(null, course, h, function (pars) { startWithPars(course, "Oahu", pars, false); });
+    });
+}
+
+function main() {
+  var st = loadJSON(STATE);
+  if (st && st.scores && st.scores.length > 0) {
+    var a = new Alert();
+    a.title = "Round in progress";
+    a.message = st.course + "\nHole " + (st.scores.length + 1) + " of " + st.pars.length + ", " + sum(st.scores) + " strokes";
+    a.addAction("Continue");
+    a.addAction("Start over");
+    a.addCancelAction("Done for now");
+    a.present().then(function (i) {
+      if (i === 0) return askHole(st);
+      if (i === 1) { clearState(); return startRound(); }
+    });
+    return;
+  }
+  startRound();
+}
+
+main();
