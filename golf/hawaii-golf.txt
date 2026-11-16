@@ -262,318 +262,403 @@ function renderWidget() {
   Script.complete();
 }
 
+
 /* ============================================================
-   INTERACTIVE CARD (runs when you tap the widget)
+   APP  (native Scriptable UI - no web view, taps always work)
    ============================================================ */
-function buildHTML(data, draft) {
+function defaultPars() { return [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4]; }
+
+function loadDraft(data) {
+  var d = readJSON(path(DRAFT));
+  if (!d || !d.course) d = blankDraft(data);
+  if (!d.scores) d.scores = [];
+  if (!d.pars) d.pars = defaultPars();
+  if (!d.holes) d.holes = 18;
+  return d;
+}
+function saveDraft(d) { writeJSON(path(DRAFT), d); }
+function hasScore(d, i) { return d.scores[i] !== undefined && d.scores[i] !== null; }
+function scoredCount(d) { var n = 0; for (var i = 0; i < 18; i++) if (hasScore(d, i)) n++; return n; }
+function roundTotals(d) {
+  var s = 0, p = 0, n = 0;
+  for (var i = 0; i < 18; i++) {
+    if (!hasScore(d, i)) continue;
+    s += d.scores[i]; p += (d.pars[i] || 4); n++;
+  }
+  return { score: s, par: p, holes: n };
+}
+
+function infoRow(t, title, subtitle, color) {
+  var r = new UITableRow(); r.height = subtitle ? 62 : 46;
+  var c = r.addText(String(title), subtitle ? String(subtitle) : null);
+  c.widthWeight = 100;
+  if (color) c.titleColor = color;
+  t.addRow(r);
+  return r;
+}
+function actionRow(t, title, subtitle, tap, color) {
+  var r = new UITableRow(); r.height = subtitle ? 62 : 52;
+  r.dismissOnSelect = false;
+  var c = r.addText(String(title), subtitle ? String(subtitle) : null);
+  c.widthWeight = 100;
+  if (color) c.titleColor = color;
+  if (tap) r.onSelect = tap;
+  t.addRow(r);
+  return r;
+}
+function holeRow(t, draft, i, tap) {
+  var par = draft.pars[i] || 4;
+  var sv = hasScore(draft, i) ? String(draft.scores[i]) : "-";
+  var r = new UITableRow(); r.height = 54; r.dismissOnSelect = false;
+  var left = r.addText("Hole " + (i + 1), "Par " + par);
+  left.widthWeight = 58;
+  var mid = r.addText(hasScore(draft, i) ? sign(draft.scores[i] - par) : "", null);
+  mid.widthWeight = 18; mid.centerAligned = true;
+  if (hasScore(draft, i)) mid.titleColor = draft.scores[i] < par ? Color.green() : (draft.scores[i] > par ? Color.red() : Color.gray());
+  var right = r.addText(sv, null);
+  right.widthWeight = 24; right.centerAligned = true;
+  right.titleFont = Font.boldSystemFont(20);
+  r.onSelect = tap;
+  t.addRow(r);
+  return { row: r, mid: mid, right: right };
+}
+
+async function pickCourse(draft, data, refresh) {
+  var t = new UITable();
+  infoRow(t, "CHOOSE A COURSE", "Tap one, or type any course in the world");
+  actionRow(t, "Type any course in the world", "Free text, any country", async function () {
+    var a = new Alert();
+    a.title = "Course";
+    a.addTextField("Course name", draft.course || "");
+    a.addTextField("City, state or island", draft.island || "");
+    a.addAction("Use this course");
+    a.addCancelAction("Cancel");
+    var k = await a.presentAlert();
+    if (k !== 0) return;
+    var cn = a.textFieldValue(0).trim();
+    if (!cn) return;
+    draft.course = cn;
+    draft.island = a.textFieldValue(1).trim() || "Other";
+    saveDraft(draft);
+    await loadTemplatePars(draft);
+    if (refresh) await refresh();
+    t.reload();
+  });
   var courses = (data && data.courses) ? data.courses : [];
-  var lastCourse = (data && data.stats && data.stats.lastCourse) ? data.stats.lastCourse : (draft && draft.course) || "Ala Wai";
-
-  var courseOpts = courses.map(function (c) {
-    return '<option value="' + c.name + '">' + c.name + (c.island ? " | " + c.island : "") + "</option>";
-  }).join("");
-  var islandMap = {};
-  for (var ci = 0; ci < courses.length; ci++) islandMap[courses[ci].name] = courses[ci].island || "";
-
-  var init = {
-    course: (draft && draft.course) || lastCourse,
-    island: (draft && draft.island) || "Oahu",
-    holes: (draft && draft.holes) || 18,
-    hole: (draft && draft.hole) || 1,
-    pars: (draft && draft.pars) || [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4],
-    scores: (draft && !draft.preview && draft.scores) ? draft.scores : [],
-    today: today(),
-    islandMap: islandMap
-  };
-
-  var page = `<!DOCTYPE html><html><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<style>
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{height:100%}
-body{margin:0;padding:14px 12px 112px;color:#16281c;
- font-family:-apple-system,Helvetica,sans-serif;
- background:
-  radial-gradient(120% 70% at 50% -10%, rgba(255,255,255,.16), rgba(255,255,255,0) 55%),
-  repeating-linear-gradient(90deg, rgba(255,255,255,.045) 0 16px, rgba(255,255,255,0) 16px 32px),
-  linear-gradient(#1a5c37 0%, #0f4027 45%, #08301c 100%);
- background-attachment:fixed;
- min-height:100%;
-}
-h1{margin:2px 0 10px;font-size:13px;letter-spacing:2px;text-transform:uppercase;
- color:#f3e6bd;font-weight:800;text-shadow:0 2px 10px rgba(0,0,0,.5);
- display:flex;align-items:center;gap:8px}
-.pin{position:relative;width:15px;height:20px;flex:0 0 auto}
-.pin:before{content:"";position:absolute;left:5px;top:0;bottom:0;width:2px;background:#f3e6bd;border-radius:1px}
-.pin:after{content:"";position:absolute;left:7px;top:1px;width:0;height:0;
- border-left:9px solid #e2452f;border-top:5px solid transparent;border-bottom:5px solid transparent}
-h1:after{content:"";flex:1;height:1px;background:linear-gradient(90deg, rgba(243,230,189,.55), rgba(243,230,189,0))}
-.ver{font-size:9px;letter-spacing:.5px;color:rgba(243,230,189,.62);font-weight:700;text-transform:none}
-.card{background:#f8f4e7;border:1px solid #e0d8c1;border-radius:18px;padding:12px 10px 14px;
- box-shadow:0 18px 38px rgba(0,0,0,.34), inset 0 1px 0 #fffdf4}
-input{width:100%;padding:11px 12px;border-radius:11px;border:1px solid #d9d0b7;background:#fffdf6;
- color:#1d3226;font-size:15px;margin-bottom:8px;font-weight:600}
-input::placeholder{color:#9aa596;font-weight:500}
-.seg{display:flex;gap:6px;margin:2px 0 12px;background:#eae3cf;padding:4px;border-radius:12px}
-.seg button{flex:1;padding:10px;border-radius:9px;border:0;background:transparent;color:#5d6b59;
- font-size:13px;font-weight:800;letter-spacing:.4px}
-.seg button.on{background:#1c6b41;color:#fff;box-shadow:0 2px 8px rgba(16,64,39,.35)}
-.lab{font-size:9px;letter-spacing:1.6px;font-weight:800;color:#8a8f7c;margin:2px 0 6px}
-.nine{display:grid;grid-template-columns:repeat(9,1fr);gap:3px}
-.hd{font-size:10px;text-align:center;font-weight:800;color:#f4f7f2;
- background:linear-gradient(#24794a,#1a5c37);border:1px solid #14502f;border-radius:7px 7px 0 0;padding:5px 0}
-.cell{background:#fffdf6;border:1px solid #e2dbc6;border-top:0;border-radius:0 0 8px 8px;
- padding:3px 2px 4px;text-align:center}
-.par{display:block;width:100%;border:1px solid #e6cd6a;background:#f6e08a;color:#3f3a17;
- border-radius:5px;font-size:10px;font-weight:800;padding:4px 0;margin:0 0 3px}
-.sc{display:block;width:100%;border:0;background:#fff8e0;border-radius:6px;
- font-size:19px;font-weight:900;line-height:1.1;padding:8px 0;color:#16281c}
-.sc:active{background:#dff0e3}
-.ar{display:block;width:100%;border:0;border-radius:6px;background:#e8e2ce;color:#20402e;
- font-size:16px;font-weight:900;padding:7px 0;margin-top:3px;line-height:1}
-.ar:active{background:#1c6b41;color:#fff}
-.under{color:#15703f}.over{color:#b3341f}.even{color:#2b3a30}.blank{color:#a9a696}
-.rule{height:1px;background:#e2dbc6;margin:12px 0}
-.bar{position:fixed;left:0;right:0;bottom:0;padding:10px 12px 16px;display:flex;gap:10px;align-items:center;
- background:linear-gradient(rgba(8,48,28,.9), rgba(6,38,22,.98));border-top:1px solid rgba(243,230,189,.25)}
-.tot{font-size:11px;color:#cfe3d2;flex:1;letter-spacing:.5px;line-height:1.45}
-.tot b{color:#fff;font-size:15px;letter-spacing:0}
-.save{flex:0 0 auto;background:#f3e6bd;color:#123c25;border:0;border-radius:12px;
- font-size:15px;font-weight:900;padding:14px 22px;letter-spacing:.5px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
-.save:active{background:#fff7dc}
-.msg{font-size:11px;color:#ffe9a8;min-height:16px;margin-top:8px;font-weight:700}
-.note{font-size:10px;color:#bcd3c1;margin-top:10px;line-height:1.5}
-</style></head><body>
-<h1><span class="pin"></span>Golf Scorecard<span class="ver">v4</span></h1>
-<div class="card">
-<input id="course" list="cl" placeholder="Course name, any course in the world" autocomplete="off">
-<datalist id="cl">${courseOpts}</datalist>
-<input id="loc" placeholder="City, state or island (optional)" autocomplete="off">
-<div class="seg">
-  <button id="b9" type="button">Front 9</button>
-  <button id="b18" type="button">Full 18</button>
-</div>
-<div class="lab">Front Nine</div>
-<div class="nine" id="h9"></div>
-<div class="nine" id="s9"></div>
-<div id="wrap18">
-  <div class="rule"></div>
-  <div class="lab">Back Nine</div>
-  <div class="nine" id="h18"></div>
-  <div class="nine" id="s18"></div>
-</div>
-</div>
-<div class="msg" id="msg"></div>
-<div class="note">Tap a score to add a stroke, tap - to remove one. Tap a yellow par cell to cycle par 3 / 4 / 5 / 6. Nothing is saved until you hit Save.</div>
-<div class="bar">
-  <div class="tot" id="tot"></div>
-  <button class="save" id="save" type="button">Save</button>
-</div>
-<script>
-var D = ${JSON.stringify(init)};
-var ROUNDS = ${JSON.stringify(ROUNDS)};
-var TEMPLATES = ${JSON.stringify(TEMPLATES)};
-var pars = D.pars.slice(0, 18);
-var scores = [];
-for (var i0 = 0; i0 < (D.scores || []).length; i0++) scores[i0] = D.scores[i0];
-var holes = D.holes || 18;
-var saving = false;
-
-function q(id) { return document.getElementById(id); }
-function sign(n) { if (n === 0) return "E"; return (n > 0 ? "+" : "") + n; }
-function cls(d) { return d < 0 ? "under" : (d > 0 ? "over" : "even"); }
-function parOf(i) { return pars[i] || 4; }
-function has(i) { return scores[i] !== undefined && scores[i] !== null; }
-
-function cellHTML(i) {
-  var sv = has(i) ? String(scores[i]) : "-";
-  var c = has(i) ? cls(scores[i] - parOf(i)) : "blank";
-  return '<div class="cell">'
-    + '<button class="par" type="button" data-act="par" data-h="' + i + '">' + parOf(i) + '</button>'
-    + '<button class="sc ' + c + '" type="button" data-act="up" data-h="' + i + '">' + sv + '</button>'
-    + '<button class="ar" type="button" data-act="down" data-h="' + i + '">-</button>'
-    + '</div>';
-}
-function headHTML(from, n) {
-  var h = "";
-  for (var i = from; i < from + n; i++) h += '<div class="hd">' + (i + 1) + '</div>';
-  return h;
-}
-function render() {
-  q("h9").innerHTML = headHTML(0, 9);
-  var c9 = "";
-  for (var i = 0; i < 9; i++) c9 += cellHTML(i);
-  q("s9").innerHTML = c9;
-  q("h18").innerHTML = headHTML(9, 9);
-  var c18 = "";
-  for (var j = 9; j < 18; j++) c18 += cellHTML(j);
-  q("s18").innerHTML = c18;
-  q("wrap18").style.display = (holes === 18) ? "block" : "none";
-  q("b9").className = (holes === 9) ? "on" : "";
-  q("b18").className = (holes === 18) ? "on" : "";
-  totals();
-}
-function slice(from, n) {
-  var s = 0, p = 0, any = false;
-  for (var i = from; i < from + n; i++) {
-    if (has(i)) { s += scores[i]; p += parOf(i); any = true; }
+  for (var i = 0; i < courses.length; i++) {
+    (function (c) {
+      actionRow(t, c.name, c.island, async function () {
+        draft.course = c.name;
+        draft.island = c.island || "Oahu";
+        saveDraft(draft);
+        await loadTemplatePars(draft);
+        if (refresh) await refresh();
+        t.reload();
+      });
+    })(courses[i]);
   }
-  return { s: s, p: p, any: any };
+  actionRow(t, "Close", null, async function () { t.reload(); });
+  await t.present();
 }
-function totals() {
-  var f = slice(0, 9), b = slice(9, 9);
-  var txt = "OUT <b>" + (f.any ? f.s + " (" + sign(f.s - f.p) + ")" : "--") + "</b>";
-  if (holes === 18) txt += "  IN <b>" + (b.any ? b.s + " (" + sign(b.s - b.p) + ")" : "--") + "</b>";
-  var ts = f.s + (holes === 18 ? b.s : 0), tp = f.p + (holes === 18 ? b.p : 0);
-  txt += "  TOTAL <b>" + ((f.any || (holes === 18 && b.any)) ? ts + " (" + sign(ts - tp) + ")" : "--") + "</b>";
-  q("tot").innerHTML = txt;
-}
-function setMsg(t) { q("msg").textContent = t || ""; }
 
-function tap(act, h) {
-  if (act === "par") {
+async function loadTemplatePars(draft) {
+  try {
+    var url = TEMPLATES + "?course=" + encodeURIComponent(draft.course);
+    var res = call(url);
+    var p = res && res.template && res.template.pars;
+    if (p && p.length) {
+      for (var i = 0; i < p.length && i < 18; i++) draft.pars[i] = p[i];
+      saveDraft(draft);
+    }
+  } catch (e) {}
+}
+
+async function setOther(draft, i, init, reload) {
+  var b = new Alert();
+  b.title = "Hole " + (i + 1) + " score";
+  b.message = "Strokes taken";
+  b.addTextField("Strokes", String(init));
+  b.addAction("Set");
+  b.addCancelAction("Cancel");
+  var j = await b.presentAlert();
+  if (j !== 0) return;
+  var v = parseInt(b.textFieldValue(0), 10);
+  if (!isNaN(v) && v > 0 && v < 21) {
+    draft.scores[i] = v;
+    draft.preview = false;
+    saveDraft(draft);
+  }
+  await reload();
+}
+
+async function holePrompt(draft, i, reload) {
+  var par = draft.pars[i] || 4;
+  var cur = hasScore(draft, i) ? draft.scores[i] : null;
+  var a = new Alert();
+  a.title = "Hole " + (i + 1) + "   par " + par;
+  var picks = [];
+  if (cur === null) {
+    a.message = "Tap your score. Every tap saves it.";
+    picks = [
+      { label: "Par  " + par, v: par },
+      { label: (par - 1) + "  birdie", v: par - 1 },
+      { label: (par + 1) + "  bogey", v: par + 1 },
+      { label: (par + 2) + "  double", v: par + 2 }
+    ];
+    for (var x = 0; x < picks.length; x++) a.addAction(picks[x].label);
+    a.addAction("Other number");
+  } else {
+    a.message = "Now " + cur + "  (" + sign(cur - par) + ")";
+    a.addAction("+1   to " + (cur + 1));
+    a.addAction("-1   to " + Math.max(1, cur - 1));
+    a.addAction("Other number");
+    a.addAction("Clear this hole");
+  }
+  a.addAction("Change par  (now " + par + ")");
+  a.addCancelAction("Cancel");
+
+  var k = await a.presentAlert();
+  if (k === -1) return;
+
+  var scoreActions = (cur === null) ? picks.length + 1 : 4;
+  if (k === scoreActions) {
     var order = [3, 4, 5, 6];
-    var at = order.indexOf(parOf(h));
-    pars[h] = order[(at + 1) % order.length];
-  } else if (act === "up") {
-    scores[h] = has(h) ? scores[h] + 1 : parOf(h);
-  } else if (act === "down") {
-    if (!has(h)) scores[h] = parOf(h);
-    else if (scores[h] > 1) scores[h] = scores[h] - 1;
-  }
-  render();
-}
-
-document.addEventListener("click", function (e) {
-  var el = e.target;
-  var act = null;
-  while (el && el !== document.body) {
-    if (el.getAttribute && el.getAttribute("data-act")) { act = el.getAttribute("data-act"); break; }
-    el = el.parentNode;
-  }
-  if (act) {
-    var hh = parseInt(el.getAttribute("data-h"), 10);
-    tap(act, hh);
+    draft.pars[i] = order[(order.indexOf(par) + 1) % 4];
+    saveDraft(draft);
+    await reload();
     return;
   }
-  if (e.target.id === "b9") { holes = 9; render(); }
-  else if (e.target.id === "b18") { holes = 18; render(); }
-  else if (e.target.id === "save") { saveRound(); }
-}, false);
 
-window.addEventListener("error", function (e) {
-  var m = q("msg");
-  if (m) m.textContent = "Script error: " + (e.message || "unknown");
-});
-
-var cin = q("course"), lin = q("loc");
-cin.value = D.course || "";
-lin.value = D.island || "";
-
-cin.addEventListener("change", function () {
-  var name = cin.value.trim();
-  var isl = D.islandMap[name];
-  if (isl) lin.value = isl;
-  loadTemplate(name);
-});
-
-function loadTemplate(name) {
-  if (!name) return;
-  fetch(TEMPLATES + "?course=" + encodeURIComponent(name))
-    .then(function (r) { return r.json(); })
-    .then(function (res) {
-      var p = res && res.template && res.template.pars;
-      if (p && p.length) {
-        for (var i = 0; i < p.length && i < 18; i++) pars[i] = p[i];
-        render();
-        setMsg("Saved par card loaded (" + p.length + " holes).");
-      }
-    })
-    .catch(function () {});
+  draft.preview = false;
+  if (cur === null) {
+    if (k < picks.length) draft.scores[i] = picks[k].v;
+    else if (k === picks.length) { await setOther(draft, i, par, reload); return; }
+  } else {
+    if (k === 0) draft.scores[i] = cur + 1;
+    else if (k === 1) draft.scores[i] = Math.max(1, cur - 1);
+    else if (k === 2) { await setOther(draft, i, cur, reload); return; }
+    else if (k === 3) draft.scores[i] = null;
+  }
+  saveDraft(draft);
+  await reload();
 }
 
-function saveRound() {
-  if (saving) return;
+async function saveRound(draft) {
   var used = [], usedPars = [], usedHoles = [];
-  var last = (holes === 9) ? 9 : 18;
-  for (var hi = 0; hi < last; hi++) {
-    if (!has(hi)) continue;
-    used.push(scores[hi]);
-    usedPars.push(parOf(hi));
-    usedHoles.push(hi + 1);
+  var last = (draft.holes === 9) ? 9 : 18;
+  for (var i = 0; i < last; i++) {
+    if (!hasScore(draft, i)) continue;
+    used.push(draft.scores[i]);
+    usedPars.push(draft.pars[i] || 4);
+    usedHoles.push(i + 1);
   }
-  if (!used.length) { setMsg("Add at least one score first. Tap a number to start."); return; }
-  var course = (cin.value || "").trim() || D.course || "Unknown course";
-  var island = (lin.value || "").trim() || "Other";
+  if (!used.length) {
+    var w = new Alert();
+    w.title = "Nothing to save";
+    w.message = "Tap a hole and put a score in first.";
+    w.addAction("OK");
+    await w.presentAlert();
+    return false;
+  }
   var body = {
     action: "create",
-    course: course,
-    island: island,
+    course: draft.course,
+    island: draft.island || "Other",
+    date: today(),
     holeScores: used,
-    date: D.today || "",
-    score: 0,
-    parsUsed: 0,
+    parsUsed: sum(usedPars),
+    score: sum(used),
     holesPlayed: used.length,
     notes: "Hole by hole: " + used.join("/") + " (par " + usedPars.join("/") + ") [holes " + usedHoles.join(",") + "]"
   };
-  for (var i = 0; i < used.length; i++) body.score += used[i];
-  for (var j = 0; j < usedPars.length; j++) body.parsUsed += usedPars[j];
+  var res = null;
+  try { res = call(ROUNDS, body); } catch (e) { res = null; }
+  var ok = res && res.ok;
+  var a = new Alert();
+  a.title = ok ? "Round saved" : "Could not save";
+  a.message = ok
+    ? (used.length + " holes at " + draft.course + " sent to the Daily Dashboard.")
+    : ((res && (res.error || res.dashError)) || "No response from the server.");
+  a.addAction("OK");
+  await a.presentAlert();
+  if (!ok) return false;
+  draft.scores = [];
+  draft.preview = false;
+  saveDraft(draft);
+  dropFile(path(CACHE));
+  return true;
+}
 
-  saving = true;
-  var btn = q("save");
-  btn.textContent = "Saving";
-  setMsg("");
-  fetch(ROUNDS, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-    .then(function (r) { return r.json(); })
-    .then(function (res) {
-      saving = false;
-      btn.textContent = "Save";
-      if (res && (res.ok || res.success)) {
-        setMsg("Saved " + body.holesPlayed + " holes to the Daily Dashboard.");
-        scores = [];
-        render();
+async function roundsList() {
+  var d = call(ROUNDS);
+  var rounds = (d && d.rounds) ? d.rounds : [];
+  var t = new UITable();
+  infoRow(t, "SAVED ROUNDS", rounds.length + " round" + (rounds.length === 1 ? "" : "s") + " - tap one to delete it");
+  if (!rounds.length) infoRow(t, "No rounds yet", "Nothing saved so far.");
+  for (var i = 0; i < rounds.length; i++) {
+    (function (r) {
+      var row = new UITableRow(); row.height = 62; row.dismissOnSelect = false;
+      var l = row.addText(r.course + (r.island ? "  |  " + r.island : ""), shortDate(r.date) + "  |  " + r.holes + " holes  |  par " + r.par);
+      l.widthWeight = 72;
+      var rt = row.addText(String(r.score), r.toPar === 0 ? "E" : sign(r.toPar));
+      rt.widthWeight = 28; rt.centerAligned = true;
+      rt.titleFont = Font.boldSystemFont(20);
+      row.onSelect = async function () {
+        var a = new Alert();
+        a.title = "Delete this round?";
+        a.message = r.course + "  |  " + shortDate(r.date) + "  |  " + r.score + " in " + r.holes + " holes";
+        a.addDestructiveAction("Delete round");
+        a.addCancelAction("Keep it");
+        var k = await a.presentAlert();
+        if (k !== 0) return;
+        var res = null;
+        try { res = call(ROUNDS, { action: "delete", id: r.id, course: r.course, date: r.date, score: r.score }); } catch (e) {}
+        dropFile(path(CACHE));
+        var done = new Alert();
+        done.title = (res && res.ok) ? "Round deleted" : "Could not delete";
+        done.message = (res && res.ok) ? (r.course + " removed.") : ((res && res.error) || "Server did not answer.");
+        done.addAction("OK");
+        await done.presentAlert();
+        t.reload();
+      };
+      t.addRow(row);
+    })(rounds[i]);
+  }
+  actionRow(t, "Close", null, async function () { t.reload(); });
+  await t.present();
+}
+
+async function scorecard(draft, data) {
+  var t = new UITable();
+  var slots = [];
+  var headCell = null;
+
+  function refreshHeader() {
+    var tot = roundTotals(draft);
+    if (!headCell) return;
+    headCell.title = draft.course + (draft.island && draft.island !== "Oahu" ? "  |  " + draft.island : "");
+    headCell.subtitle = tot.holes
+      ? (tot.holes + " holes in, " + tot.score + "  (" + sign(tot.score - tot.par) + ")")
+      : "No scores yet - tap a hole below";
+  }
+  function refreshHoles() {
+    for (var i = 0; i < slots.length; i++) {
+      var s = slots[i];
+      if (!s) continue;
+      var par = draft.pars[i] || 4;
+      if (hasScore(draft, i)) {
+        s.right.title = String(draft.scores[i]);
+        s.right.titleColor = null;
+        s.mid.title = sign(draft.scores[i] - par);
+        s.mid.titleColor = draft.scores[i] < par ? Color.green() : (draft.scores[i] > par ? Color.red() : Color.gray());
       } else {
-        setMsg("Could not save: " + ((res && (res.error || res.dashError)) || "unknown"));
+        s.right.title = "-";
+        s.mid.title = "";
       }
-    })
-    .catch(function (e) {
-      saving = false;
-      btn.textContent = "Save";
-      setMsg("Network error: " + String(e).slice(0, 70));
-    });
+    }
+  }
+  async function refresh() {
+    refreshHeader();
+    refreshHoles();
+    await t.reload();
+  }
+
+  var head = new UITableRow(); head.height = 74;
+  headCell = head.addText(draft.course, "No scores yet - tap a hole below");
+  headCell.widthWeight = 100;
+  t.addRow(head);
+  refreshHeader();
+
+  var last = (draft.holes === 9) ? 9 : 18;
+  for (var i = 0; i < last; i++) {
+    (function (idx) {
+      var made = holeRow(t, draft, idx, async function () {
+        await holePrompt(draft, idx, refresh);
+      });
+      slots[idx] = made;
+    })(i);
+  }
+
+  actionRow(t, "SAVE ROUND", "Sends only the holes you scored, to the Daily Dashboard", async function () {
+    var saved = await saveRound(draft);
+    if (saved) await refresh();
+  }, Color.blue());
+
+  actionRow(t, "Course and par card", draft.course, async function () {
+    await pickCourse(draft, data, null);
+    refresh();
+  });
+
+  actionRow(t, "Holes", (draft.holes === 9 ? "Front 9" : "Full 18"), async function () {
+    draft.holes = (draft.holes === 9) ? 18 : 9;
+    saveDraft(draft);
+    t.reload();
+  });
+
+  actionRow(t, "Clear all scores", "Wipes the round in progress, saved rounds stay", async function () {
+    var a = new Alert();
+    a.title = "Clear the round?";
+    a.message = "Scores in progress are erased. Rounds already saved are kept.";
+    a.addDestructiveAction("Clear");
+    a.addCancelAction("Cancel");
+    var k = await a.presentAlert();
+    if (k !== 0) return;
+    draft.scores = [];
+    saveDraft(draft);
+    await refresh();
+  }, Color.red());
+
+  actionRow(t, "Main menu", null, async function () {
+    await mainMenu(loadDraft(data), data);
+  });
+
+  await t.present();
 }
 
-render();
-</script></body></html>`;
+async function mainMenu(draft, data) {
+  var t = new UITable();
+  var stats = (data && data.stats) ? data.stats : null;
+  var tot = roundTotals(draft);
 
-  // iOS WebViews sometimes read the string as Latin-1, so keep the page pure ASCII.
-  var MAP = { "\u00b7": "|", "\u2014": "--", "\u2013": "-", "\u2212": "-", "\u25b2": "+", "\u25bc": "-",
-              "\u2713": "ok", "\u00d7": "x", "\u2019": "'", "\u2018": "'", "\u201c": "\"", "\u201d": "\"",
-              "\u2026": "..." };
-  return page.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, function (ch) {
-    return MAP[ch] !== undefined ? MAP[ch] : "";
-  });
-}
+  var head = new UITableRow(); head.height = 74;
+  var ht = head.addText("HAWAII GOLF", stats ? (stats.coursesPlayed + " of " + stats.coursesTotal + " Hawaii courses played" + (stats.worldPlayed ? " | " + stats.worldPlayed + " worldwide" : "")) : "Play them all");
+  ht.widthWeight = 100;
+  t.addRow(head);
 
-function runInteractive() {
-  var got = getData();
-  var draft = readJSON(path(DRAFT));
-  var web = new WebView();
-  web.loadHTML(buildHTML(got.data, draft), "https://base44.app/");
-  web.present().then(function () {
-    return web.evaluateJavaScript("JSON.stringify({course: (document.getElementById('course')||{}).value || '', island: (document.getElementById('loc')||{}).value || '', holes: holes, pars: pars, scores: scores})")
-      .then(function (raw) {
-        var st = null;
-        try { st = JSON.parse(raw); } catch (e) {}
-        if (st && st.scores && st.scores.length) writeJSON(path(DRAFT), st);
-        else dropFile(path(DRAFT));
-      })
-      .catch(function () {});
-  }).then(function () {
-    dropFile(path(CACHE));
-    Script.complete();
+  actionRow(t, tot.holes ? "Continue round" : "Start a round", tot.holes
+    ? (draft.course + "  |  " + tot.holes + " holes in, " + tot.score + " (" + sign(tot.score - tot.par) + ")")
+    : (draft.course + "  |  par card ready"), async function () {
+      var d2 = loadDraft(data);
+      await scorecard(d2, data);
+    }, Color.blue());
+
+  actionRow(t, "Course", draft.course + (draft.island ? "  |  " + draft.island : ""), async function () {
+    await pickCourse(draft, data, null);
+    t.reload();
   });
+
+  actionRow(t, "Holes", (draft.holes === 9 ? "Front 9" : "Full 18"), async function () {
+    draft.holes = (draft.holes === 9) ? 18 : 9;
+    saveDraft(draft);
+    await t.reload();
+  });
+
+  actionRow(t, "Saved rounds", stats ? (stats.totalRounds + " saved" + (stats.lastCourse ? " | last " + stats.lastCourse + " " + stats.lastScore : "")) : "Nothing saved yet", async function () {
+    await roundsList();
+  });
+
+  if (stats) {
+    infoRow(t, "Island progress", (function () {
+      var ip = (data && data.islandProgress) ? data.islandProgress : {};
+      var parts = [];
+      var keys = Object.keys(ip);
+      for (var i = 0; i < keys.length; i++) parts.push(keys[i] + " " + ip[keys[i]].played + "/" + ip[keys[i]].total);
+      return parts.join("   ");
+    })());
+    if (stats.averageScore) infoRow(t, "Average", stats.averageScore + " per round" + (stats.bestCourse ? "  |  best " + stats.bestCourse + " " + sign(stats.bestToPar) : ""));
+  }
+
+  await t.present();
 }
 
 /* ---------------- widget taps (URL scheme) ---------------- */
@@ -588,29 +673,20 @@ function wipDraft() {
   return d;
 }
 
-function applyBump(hole, delta, page, keepHole) {
+function applyBump(hole, delta, keepHole) {
   var d = wipDraft();
   if (d.preview) { d.scores = []; d.preview = false; }
   var i = Number(hole) - 1;
   if (isNaN(i) || i < 0 || i > 17) return d;
   var par = d.pars[i] || 4;
-  var has = !(d.scores[i] === undefined || d.scores[i] === null);
-  var next = has ? d.scores[i] + Number(delta || 1) : par;
+  var set = !(d.scores[i] === undefined || d.scores[i] === null);
+  var next = set ? d.scores[i] + Number(delta || 1) : par;
   if (next < 1) next = 1;
-  if (next > 15) next = 15;
+  if (next > 20) next = 20;
   d.scores[i] = next;
-  if (page) d.page = Number(page);
   if (keepHole) d.hole = Math.min(18, Math.max(1, Number(keepHole)));
   writeJSON(path(DRAFT), d);
   return d;
-}
-
-// iOS will not run code inside a widget, so a tapped arrow opens the script,
-// applies the stroke, then shows the same card with the new number in place.
-function showCardPreview() {
-  var got = getData();
-  var w = buildCard(got.data);
-  return w.presentLarge().then(function () { Script.complete(); });
 }
 
 function saveFromWidget() {
@@ -621,9 +697,7 @@ function saveFromWidget() {
   for (var hi = 0; hi < 18; hi++) {
     var sv = scores[hi];
     if (sv === undefined || sv === null) continue;
-    used.push(sv);
-    usedPars.push(pars[hi] || 4);
-    usedHoles.push(hi + 1);
+    used.push(sv); usedPars.push(pars[hi] || 4); usedHoles.push(hi + 1);
   }
   if (!used.length) return Script.complete();
   var body = {
@@ -637,39 +711,52 @@ function saveFromWidget() {
     holesPlayed: used.length,
     notes: "Hole by hole: " + used.join("/") + " (par " + usedPars.join("/") + ") [holes " + usedHoles.join(",") + "]"
   };
-  try { call(ROUNDS, body); } catch (e) {}
-  d.scores = [];
-  d.holes = 18;
-  d.preview = false;
-  writeJSON(path(DRAFT), d);
-  dropFile(path(CACHE));
+  var res = null;
+  try { res = call(ROUNDS, body); } catch (e) {}
   var a = new Alert();
-  a.title = "Round saved";
-  a.message = body.holeScores.length + " holes at " + d.course + " sent to the Daily Dashboard.";
-  a.addAction("Done");
+  a.title = (res && res.ok) ? "Round saved" : "Could not save";
+  a.message = (res && res.ok)
+    ? (used.length + " holes at " + d.course + " sent to the Daily Dashboard.")
+    : ((res && (res.error || res.dashError)) || "No answer from the server.");
+  a.addAction("OK");
+  if (res && res.ok) {
+    d.scores = [];
+    d.preview = false;
+    writeJSON(path(DRAFT), d);
+    dropFile(path(CACHE));
+  }
   return a.present().then(function () { Script.complete(); });
 }
 
+async function run() {
+  var got = getData();
+  var data = got.data;
+  var draft = loadDraft(data);
+  if (query && query.bump) {
+    applyBump(query.bump, query.d, query.hole);
+    return scorecard(loadDraft(data), data);
+  }
+  if (query && query.hole) {
+    var hd = loadDraft(data);
+    hd.hole = Math.min(18, Math.max(1, Number(query.hole)));
+    saveDraft(hd);
+    return scorecard(hd, data);
+  }
+  if (query && (query.card || query.open)) return scorecard(draft, data);
+  return mainMenu(draft, data);
+}
+
 /* ---------------- entry ---------------- */
-if (query.bump) {
-  applyBump(query.bump, query.d, query.page, query.hole);
-  runInteractive();
-} else if (query.hole) {
-  var hd = wipDraft();
-  hd.hole = Math.min(18, Math.max(1, Number(query.hole)));
-  writeJSON(path(DRAFT), hd);
-  runInteractive();
+if (isWidget) {
+  renderWidget();
 } else if (query.save) {
   saveFromWidget();
-} else if (query.card) {
-  runInteractive();
-} else if (query.page) {
-  var pd = wipDraft();
-  pd.page = Number(query.page) === 2 ? 2 : 1;
-  writeJSON(path(DRAFT), pd);
-  showCardPreview();
-} else if (isWidget) {
-  renderWidget();
 } else {
-  runInteractive();
+  run().then(function () { Script.complete(); }).catch(function (e) {
+    var a = new Alert();
+    a.title = "Hawaii Golf error";
+    a.message = String(e).slice(0, 220);
+    a.addAction("OK");
+    a.presentAlert().then(function () { Script.complete(); });
+  });
 }
