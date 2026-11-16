@@ -361,7 +361,8 @@
         '<span style="font-size:9px;letter-spacing:.18em;color:#38f5e0" id="b-map">MEGABLOCK CORE</span>' +
         '<span class="hud"><span>W<b id="h-wave">01</b></span><span>H<b id="h-foes">0</b></span>' +
         '<span>CR<b id="h-coins">0</b></span><span class="au">AU<b id="h-aura">0</b></span></span>' +
-        '<div class="ctrl"><button id="c-pause">II</button><button id="c-speed">1x</button>' +
+        '<div class="ctrl"><button id="c-zoomout">−</button><button id="c-zoomin">+</button>' +
+        '<button id="c-pause">II</button><button id="c-speed">1x</button>' +
         '<button id="c-auto" class="on">AUTO</button></div>' +
       '</div>' +
       '<div id="stage"><svg id="paths"></svg><div id="arena"></div>' +
@@ -1264,7 +1265,44 @@
 
   /* ---------------- battle wiring ---------------- */
   function bindBattle() {
+    function zoomBy(f) {
+      if (!V3 || !window.NW3D.setZoom) return;
+      window.NW3D.setZoom(window.NW3D.getZoom() * f);
+      var pct = Math.round(window.NW3D.getZoom() * 100);
+      toast("ZOOM " + pct + "%");
+    }
+    el("c-zoomin").onclick = function () { zoomBy(1.22); };
+    el("c-zoomout").onclick = function () { zoomBy(1 / 1.22); };
+    el("stage").addEventListener("wheel", function (ev) {
+      if (!V3) return;
+      ev.preventDefault();
+      zoomBy(ev.deltaY < 0 ? 1.1 : 1 / 1.1);
+    }, { passive: false });
+
+    var pinchStart = 0, pinchZoom0 = 1, pinching = false;
+    function touchGap(t) {
+      return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    }
+    el("stage").addEventListener("touchstart", function (ev) {
+      if (!V3 || ev.touches.length !== 2) return;
+      pinching = true;
+      pinchStart = touchGap(ev.touches);
+      pinchZoom0 = window.NW3D.getZoom ? window.NW3D.getZoom() : 1;
+    }, { passive: true });
+    el("stage").addEventListener("touchmove", function (ev) {
+      if (!pinching || ev.touches.length !== 2) return;
+      ev.preventDefault();
+      var gap = touchGap(ev.touches);
+      if (pinchStart > 8) window.NW3D.setZoom(pinchZoom0 * (gap / pinchStart));
+    }, { passive: false });
+    el("stage").addEventListener("touchend", function () {
+      if (!pinching) return;
+      pinching = false;
+      setTimeout(function () { pinching = false; }, 240);
+    });
+
     el("stage").addEventListener("click", function (ev) {
+      if (pinching) return;
       var st = el("stage").getBoundingClientRect();
       var x = ev.clientX - st.left, y = ev.clientY - st.top;
       if (V3 && window.NW3D.pick) {
