@@ -327,7 +327,7 @@ function buildHTML(data, draft) {
   var lastCourse = (data && data.stats && data.stats.lastCourse) ? data.stats.lastCourse : (draft && draft.course) || "Ala Wai";
 
   var courseOpts = courses.map(function (c) {
-    return '<option value="' + c.name + '">' + c.name + (c.island ? " · " + c.island : "") + "</option>";
+    return '<option value="' + c.name + '">' + c.name + (c.island ? " | " + c.island : "") + "</option>";
   }).join("");
   var islandMap = {};
   for (var ci = 0; ci < courses.length; ci++) islandMap[courses[ci].name] = courses[ci].island || "";
@@ -341,35 +341,75 @@ function buildHTML(data, draft) {
     islandMap: islandMap
   };
 
-  return `<!DOCTYPE html><html><head>
+  var page = `<!DOCTYPE html><html><head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:#0b0b0d;color:#f2f0ea;font-family:-apple-system,Helvetica,sans-serif;padding:10px 10px 96px}
-h1{font-size:15px;margin:0 0 8px;letter-spacing:.5px;color:#d4af37}
-input{width:100%;padding:10px;border-radius:9px;border:1px solid #2a2f33;background:#15181b;color:#f2f0ea;font-size:15px;margin-bottom:8px}
-input::placeholder{color:#5c6266}
-.seg{display:flex;gap:6px;margin-bottom:10px}
-.seg button{flex:1;padding:8px;border-radius:8px;border:1px solid #2a2f33;background:#15181b;color:#9a9a9a;font-size:13px;font-weight:600}
-.seg button.on{background:#1f6f43;color:#fff;border-color:#2f8f5b}
-.nine{display:grid;grid-template-columns:repeat(9,1fr);gap:3px;margin-bottom:4px}
-.hd{font-size:9px;text-align:center;color:#dff0e4;background:#1f6f43;border-radius:4px;padding:3px 0;font-weight:700}
-.cell{background:#141618;border-radius:6px;padding:3px 0 4px;text-align:center}
-.par{font-size:9px;color:#1a1a1a;background:#f2c94c;border-radius:3px;margin:0 2px 3px;padding:1px 0;font-weight:700}
-.sc{font-size:16px;font-weight:800;line-height:1.1}
-.ar{display:flex;flex-direction:column;gap:2px;margin-top:2px}
-.ar button{border:0;border-radius:5px;background:#22282c;color:#cfd6d9;font-size:11px;padding:5px 0;font-weight:700}
-.ar button:active{background:#2f8f5b;color:#fff}
-.under{color:#7ddc9a}.over{color:#ff8f7d}.even{color:#d8d8d8}.blank{color:#4a4a4a}
-.bar{position:fixed;left:0;right:0;bottom:0;background:#101315;border-top:1px solid #23282b;padding:10px 12px 14px;display:flex;gap:8px;align-items:center}
-.tot{font-size:12px;color:#9a9a9a;flex:1}
-.tot b{color:#f2f0ea;font-size:15px}
-.save{flex:0 0 auto;background:#1f6f43;color:#fff;border:0;border-radius:10px;font-size:15px;font-weight:700;padding:13px 20px}
-.save:active{background:#2f8f5b}
-.msg{font-size:11px;color:#7ddc9a;min-height:14px;margin-top:6px}
-.note{font-size:10px;color:#6b7175;margin-top:10px;line-height:1.5}
+html,body{height:100%}
+body{margin:0;padding:14px 12px 104px;color:#16281c;
+ font-family:-apple-system,Helvetica,sans-serif;
+ background:
+  radial-gradient(120% 70% at 50% -10%, rgba(255,255,255,.16), rgba(255,255,255,0) 55%),
+  repeating-linear-gradient(90deg, rgba(255,255,255,.045) 0 16px, rgba(255,255,255,0) 16px 32px),
+  linear-gradient(#1a5c37 0%, #0f4027 45%, #08301c 100%);
+ background-attachment:fixed;
+ min-height:100%;
+}
+h1{margin:2px 0 10px;font-size:13px;letter-spacing:2px;text-transform:uppercase;
+ color:#f3e6bd;font-weight:800;text-shadow:0 2px 10px rgba(0,0,0,.5);
+ display:flex;align-items:center;gap:8px}
+.pin{position:relative;width:15px;height:20px;flex:0 0 auto}
+.pin:before{content:"";position:absolute;left:5px;top:0;bottom:0;width:2px;background:#f3e6bd;border-radius:1px;
+ box-shadow:0 0 6px rgba(0,0,0,.4)}
+.pin:after{content:"";position:absolute;left:7px;top:1px;width:0;height:0;
+ border-left:9px solid #e2452f;border-top:5px solid transparent;border-bottom:5px solid transparent;
+ filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+h1:after{content:"";flex:1;height:1px;background:linear-gradient(90deg, rgba(243,230,189,.55), rgba(243,230,189,0))}
+@media (max-width:430px){
+ body{padding:10px 8px 104px}
+ .card{padding:10px 8px 12px;border-radius:16px}
+ .nine{gap:2px}
+ .ar button{padding:6px 0;font-size:12px}
+ .sc{font-size:16px}
+}
+.card{background:#f8f4e7;border:1px solid #e0d8c1;border-radius:18px;padding:12px 12px 14px;
+ box-shadow:0 18px 38px rgba(0,0,0,.34), inset 0 1px 0 #fffdf4}
+input{width:100%;padding:11px 12px;border-radius:11px;border:1px solid #d9d0b7;background:#fffdf6;
+ color:#1d3226;font-size:15px;margin-bottom:8px;font-weight:600}
+input::placeholder{color:#9aa596;font-weight:500}
+.seg{display:flex;gap:6px;margin:2px 0 12px;background:#eae3cf;padding:4px;border-radius:12px}
+.seg button{flex:1;padding:9px;border-radius:9px;border:0;background:transparent;color:#5d6b59;
+ font-size:13px;font-weight:800;letter-spacing:.4px}
+.seg button.on{background:#1c6b41;color:#fff;box-shadow:0 2px 8px rgba(16,64,39,.35)}
+.lab{font-size:9px;letter-spacing:1.6px;font-weight:800;color:#8a8f7c;margin:2px 0 6px}
+.nine{display:grid;grid-template-columns:repeat(9,1fr);gap:3px}
+.hd{font-size:9px;text-align:center;font-weight:800;color:#f4f7f2;
+ background:linear-gradient(#24794a,#1a5c37);border:1px solid #14502f;border-radius:6px 6px 0 0;padding:4px 0}
+.cell{background:#fffdf6;border:1px solid #e2dbc6;border-top:0;border-radius:0;padding:4px 1px 5px;text-align:center}
+.nine .cell:last-of-type{border-radius:0 0 8px 8px}
+.par{font-size:10px;color:#3f3a17;background:#f6e08a;border:1px solid #e6cd6a;border-radius:5px;
+ margin:0 2px 4px;padding:2px 0;font-weight:800}
+.sc{font-size:17px;font-weight:900;line-height:1.05;letter-spacing:-.3px}
+.ar{display:flex;flex-direction:column;gap:2px;margin-top:3px;padding:0 2px}
+.ar button{border:0;border-radius:4px;background:#e8e2ce;color:#20402e;font-size:12px;padding:4px 0;font-weight:900}
+.ar button:active{background:#1c6b41;color:#fff}
+.under{color:#15703f}.over{color:#b3341f}.even{color:#2b3a30}.blank{color:#b8b5a4}
+.rule{height:1px;background:#e2dbc6;margin:10px 0}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:10px 12px 16px;display:flex;gap:10px;align-items:center;
+ background:linear-gradient(rgba(8,48,28,.86), rgba(6,38,22,.97));border-top:1px solid rgba(243,230,189,.25);
+ -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.tot{font-size:11px;color:#cfe3d2;flex:1;letter-spacing:.6px}
+.tot b{color:#fff;font-size:15px;letter-spacing:0}
+.save{flex:0 0 auto;background:#f3e6bd;color:#123c25;border:0;border-radius:12px;
+ font-size:15px;font-weight:900;padding:13px 22px;letter-spacing:.5px;
+ box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.save:active{background:#fff7dc}
+.msg{font-size:11px;color:#ffe9a8;min-height:14px;margin-top:8px;font-weight:600}
+.note{font-size:10px;color:#bcd3c1;margin-top:10px;line-height:1.5}
 </style></head><body>
-<h1>GOLF · SCORECARD</h1>
+<h1><span class="pin"></span>Golf Scorecard</h1>
+<div class="card">
 <input id="course" list="cl" placeholder="Course name, any course in the world" autocomplete="off">
 <datalist id="cl">${courseOpts}</datalist>
 <input id="loc" placeholder="City, state or island (optional)" autocomplete="off">
@@ -377,16 +417,20 @@ input::placeholder{color:#5c6266}
   <button id="b9" onclick="setHoles(9)">Front 9</button>
   <button id="b18" onclick="setHoles(18)">Full 18</button>
 </div>
+<div class="lab">Front Nine</div>
 <div class="nine" id="h9"></div>
 <div class="nine" id="s9"></div>
+<div class="rule"></div>
+<div class="lab">Back Nine</div>
 <div class="nine" id="h18"></div>
 <div class="nine" id="s18"></div>
+</div>
+<div class="msg" id="msg"></div>
+<div class="note">Arrow up adds a stroke, arrow down removes one. Tap a yellow par cell to cycle par 3 / 4 / 5 / 6. Nothing is saved until you hit Save.</div>
 <div class="bar">
   <div class="tot" id="tot"></div>
   <button class="save" id="save" onclick="saveRound()">Save</button>
 </div>
-<div class="note">Arrow up adds a stroke, arrow down removes one. Tap a yellow par cell to cycle par 3 / 4 / 5 / 6. Nothing is saved until you hit Save.</div>
-<div class="msg" id="msg"></div>
 <script>
 var D = ${JSON.stringify(init)};
 var ROUNDS = ${JSON.stringify(ROUNDS)};
@@ -461,7 +505,7 @@ function render() {
     var shown = sc === undefined ? "-" : sc;
     s9 += '<div class="cell"><div class="par" onclick="bumpPar(' + i + ')">' + pars[i] + "</div>"
         + '<div class="sc ' + (sc === undefined ? "blank" : cls(sc - pars[i])) + '">' + shown + "</div>"
-        + '<div class="ar"><button onclick="bump(' + i + ',1)">▲</button><button onclick="bump(' + i + ',-1)">▼</button></div></div>';
+        + '<div class="ar"><button onclick="bump(' + i + ',1)">+</button><button onclick="bump(' + i + ',-1)">-</button></div></div>';
   }
   for (var j = 9; j < 9 + back; j++) {
     h18 += '<div class="hd">' + (j + 1) + "</div>";
@@ -469,7 +513,7 @@ function render() {
     var shown2 = sc2 === undefined ? "-" : sc2;
     s18 += '<div class="cell"><div class="par" onclick="bumpPar(' + j + ')">' + pars[j] + "</div>"
          + '<div class="sc ' + (sc2 === undefined ? "blank" : cls(sc2 - pars[j])) + '">' + shown2 + "</div>"
-         + '<div class="ar"><button onclick="bump(' + j + ',1)">▲</button><button onclick="bump(' + j + ',-1)">▼</button></div></div>';
+         + '<div class="ar"><button onclick="bump(' + j + ',1)">+</button><button onclick="bump(' + j + ',-1)">-</button></div></div>';
   }
   document.getElementById("h9").innerHTML = h9;
   document.getElementById("s9").innerHTML = s9;
@@ -527,7 +571,7 @@ function saveRound() {
       if (res && res.ok) {
         fetch(TEMPLATES, {method:"POST", headers:{"Content-Type":"application/json"},
           body:JSON.stringify({action:"save", course: courseName, island: loc, pars: usedPars})}).catch(function(){});
-        btn.textContent = "Saved ✓";
+        btn.textContent = "Saved";
         document.getElementById("msg").textContent = "Round saved (" + body.holesPlayed + " holes). Close this screen and the widget updates.";
         scores = [];
         setTimeout(function(){ btn.textContent = "Save"; render(); }, 1600);
@@ -544,6 +588,14 @@ function saveRound() {
 render();
 if (!D.course) sel.selectedIndex = 0;
 </script></body></html>`;
+
+  // iOS WebViews sometimes read the string as Latin-1, so keep the page pure ASCII.
+  var MAP = { "\u00b7": "|", "\u2014": "--", "\u2013": "-", "\u2212": "-", "\u25b2": "+", "\u25bc": "-",
+              "\u2713": "ok", "\u00d7": "x", "\u2019": "'", "\u2018": "'", "\u201c": "\"", "\u201d": "\"",
+              "\u2026": "..." };
+  return page.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, function (ch) {
+    return MAP[ch] !== undefined ? MAP[ch] : "";
+  });
 }
 
 function runInteractive() {
