@@ -262,29 +262,49 @@
   }
 
   /* ================= town ================= */
+  function instancer(geo, items, mtlOpt, opacity) {
+    if (!items.length) return null;
+    var material = new T.MeshStandardMaterial({
+      color: 0xffffff, metalness: mtlOpt && mtlOpt.metal !== undefined ? mtlOpt.metal : 0.2,
+      roughness: mtlOpt && mtlOpt.rough !== undefined ? mtlOpt.rough : 0.8,
+      transparent: opacity !== undefined, opacity: opacity === undefined ? 1 : opacity,
+      emissive: mtlOpt && mtlOpt.emissive !== undefined ? mtlOpt.emissive : 0x000000,
+      emissiveIntensity: mtlOpt && mtlOpt.ei !== undefined ? mtlOpt.ei : 0.4
+    });
+    if (mtlOpt && mtlOpt.basic) material = new T.MeshBasicMaterial({ color: 0xffffff, transparent: opacity !== undefined, opacity: opacity === undefined ? 1 : opacity });
+    var mesh = new T.InstancedMesh(geo, material, items.length);
+    var dummy = new T.Object3D(), col = new T.Color();
+    items.forEach(function (it, i) {
+      dummy.position.set(it.x, it.y, it.z);
+      dummy.rotation.set(it.rx || 0, it.ry || 0, it.rz || 0);
+      dummy.scale.set(it.sx, it.sy, it.sz);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      col.setHex(it.c === undefined ? 0xffffff : it.c);
+      mesh.setColorAt(i, col);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.frustumCulled = false;
+    return mesh;
+  }
+
   function buildTown(paths) {
     townRoot = new T.Group();
     scene.add(townRoot);
+    var Q = { bld: [], roof: [], kerb: [], walk: [], pole: [], lamp: [], planter: [], trunk: [], leaf: [], win: [], carBody: [], carTop: [], carGlass: [], carLamp: [], carWheel: [], walkLine: [] };
 
-    /* asphalt ground */
-    var ground = new T.Mesh(new T.PlaneGeometry(90, 90), new T.MeshStandardMaterial({
-      color: 0x14181b, metalness: 0.1, roughness: 0.95
-    }));
+    var ground = new T.Mesh(new T.PlaneGeometry(90, 90), new T.MeshStandardMaterial({ color: 0x14181b, metalness: 0.1, roughness: 0.95 }));
     ground.rotation.x = -Math.PI / 2;
     townRoot.add(ground);
 
-    /* plaza paving under the core */
-    var plaza = new T.Mesh(new T.CylinderGeometry(4.6, 4.8, 0.1, 28), new T.MeshStandardMaterial({
-      color: 0x1b2226, metalness: 0.15, roughness: 0.9
-    }));
+    var plaza = new T.Mesh(new T.CylinderGeometry(4.6, 4.8, 0.1, 26), new T.MeshStandardMaterial({ color: 0x1b2226, metalness: 0.15, roughness: 0.9 }));
     plaza.position.y = 0.05;
     townRoot.add(plaza);
     for (var r = 0; r < 3; r++) {
-      var rv = new T.Mesh(new T.RingGeometry(1.4 + r * 1.15, 1.5 + r * 1.15, 32),
-        new T.MeshBasicMaterial({ color: 0x38f5e0, transparent: true, opacity: 0.22 }));
-      rv.rotation.x = -Math.PI / 2;
-      rv.position.y = 0.11;
-      townRoot.add(rv);
+      var rv = new T.Mesh(new T.RingGeometry(1.4 + r * 1.15, 1.5 + r * 1.15, 28),
+        new T.MeshBasicMaterial({ color: 0x38f5e0, transparent: true, opacity: 0.2 }));
+      rv.rotation.x = -Math.PI / 2; rv.position.y = 0.11; townRoot.add(rv);
     }
 
     var curvePts = [];
@@ -293,19 +313,12 @@
       if (v3.length < 2) return;
       curvePts.push(v3);
       var curve = new T.CatmullRomCurve3(v3);
-
-      /* road: flattened tube = street surface */
-      var road = new T.Mesh(new T.TubeGeometry(curve, 42, 0.78, 8, false),
+      var road = new T.Mesh(new T.TubeGeometry(curve, 40, 0.78, 8, false),
         new T.MeshStandardMaterial({ color: 0x22282c, metalness: 0.05, roughness: 0.98 }));
-      road.scale.y = 0.1;
-      road.position.y = 0.08;
-      townRoot.add(road);
-
-      /* center line */
+      road.scale.y = 0.1; road.position.y = 0.08; townRoot.add(road);
       var laneGeo = new T.BufferGeometry().setFromPoints(v3.map(function (v) { return new T.Vector3(v.x, 0.14, v.z); }));
-      townRoot.add(new T.Line(laneGeo, new T.LineBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.5 })));
+      townRoot.add(new T.Line(laneGeo, new T.LineBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.45 })));
 
-      /* kerbs + sidewalks along the street */
       for (var i = 1; i < v3.length - 1; i++) {
         var a = v3[i], b = v3[i + 1];
         if (!b) continue;
@@ -315,18 +328,16 @@
         var ang = Math.atan2(dir.x, dir.z);
         [-1, 1].forEach(function (sgn) {
           var nrm = new T.Vector3(dir.z, 0, -dir.x).normalize().multiplyScalar(sgn * 0.92);
-          var walk = put(townRoot, G.box, mat(0x2b3438, 0x0b1114, 0.05),
-            1.2, 0.09, len + 0.5, a.x + nrm.x + dir.x * 0.5, 0.12, a.z + nrm.z + dir.z * 0.5);
-          walk.rotation.y = ang;
-          var kerb = put(townRoot, G.box, mat(0x3c474c, 0x0b1114, 0.05),
-            0.1, 0.14, len + 0.5, a.x + nrm.x * 0.86 + dir.x * 0.5, 0.13, a.z + nrm.z * 0.86 + dir.z * 0.5);
-          kerb.rotation.y = ang;
+          Q.walk.push({ sx: 1.2, sy: 0.09, sz: len + 0.5, x: a.x + nrm.x + dir.x * 0.5, y: 0.12, z: a.z + nrm.z + dir.z * 0.5, ry: ang, c: 0x2b3438 });
+          var nrm2 = new T.Vector3(dir.z, 0, -dir.x).normalize().multiplyScalar(sgn * 0.86);
+          Q.kerb.push({ sx: 0.1, sy: 0.14, sz: len + 0.5, x: a.x + nrm2.x + dir.x * 0.5, y: 0.13, z: a.z + nrm2.z + dir.z * 0.5, ry: ang, c: 0x3c474c });
         });
       }
     });
 
-    /* buildings flanking the streets */
-    var winGeo = [], used = [];
+    var used = [];
+    var tones = [0x222c31, 0x1d262b, 0x26313a, 0x1a2328];
+    var signCols = [0x38f5e0, 0xff5d5d, 0xffd24a, 0xc07bff, 0x7dffb0];
     curvePts.forEach(function (v3) {
       for (var i = 1; i < v3.length; i++) {
         var a = v3[i - 1], b = v3[i];
@@ -334,34 +345,29 @@
         var ang = Math.atan2(dir.x, dir.z);
         [-1, 1].forEach(function (sgn) {
           for (var k = 0; k < 2; k++) {
-            var t = 0.28 + k * 0.48;
+            var t = 0.28 + k * 0.5;
             var px = a.x + dir.x * t, pz = a.z + dir.z * t;
-            var nrm = new T.Vector3(dir.z, 0, -dir.x).normalize().multiplyScalar(sgn * (3.2 + Math.random() * 1.6));
+            var nrm = new T.Vector3(dir.z, 0, -dir.x).normalize().multiplyScalar(sgn * (3.1 + Math.random() * 1.5));
             var bx = px + nrm.x, bz = pz + nrm.z;
             if (Math.hypot(bx, bz) < 5.2) continue;
-            var clash = used.some(function (u) { return Math.hypot(u.x - bx, u.z - bz) < 2.3; });
-            if (clash) continue;
+            if (used.some(function (u) { return Math.hypot(u.x - bx, u.z - bz) < 2.4; })) continue;
             used.push({ x: bx, z: bz });
             var w = 1.5 + Math.random() * 1.5, d = 1.5 + Math.random() * 1.5, h = 1.8 + Math.random() * 5.4;
-            var tone = [0x222c31, 0x1d262b, 0x26313a, 0x1a2328][Math.floor(Math.random() * 4)];
-            var bld = put(townRoot, G.box, mat(tone, 0x0a1013, 0.06), w, h, d, bx, h / 2 + 0.1, bz);
-            bld.rotation.y = ang;
-            /* roof light + shop sign */
-            put(townRoot, G.box, mat(0x0e1518, 0x38f5e0, 0.5), w * 0.9, 0.04, d * 0.9, bx, h + 0.12, bz);
-            var signCol = [0x38f5e0, 0xff5d5d, 0xffd24a, 0xc07bff, 0x7dffb0][Math.floor(Math.random() * 5)];
-            put(townRoot, G.box, mat(signCol, signCol, 1.5), w * 0.55, 0.18, 0.04,
-              bx + Math.cos(ang) * 0, 0.9 + h * 0.06, bz + (sgn > 0 ? -d / 2 - 0.02 : d / 2 + 0.02));
-            /* window grid */
-            var rows = Math.max(1, Math.floor(h / 0.9)), cols = Math.max(1, Math.floor(w / 0.62));
+            Q.bld.push({ sx: w, sy: h, sz: d, x: bx, y: h / 2 + 0.1, z: bz, ry: ang, c: tones[(Math.random() * tones.length) | 0] });
+            Q.roof.push({ sx: w * 0.9, sy: 0.05, sz: d * 0.9, x: bx, y: h + 0.12, z: bz, ry: ang, c: 0x0e1518 });
+            Q.roof.push({ sx: w * 0.5, sy: 0.16, sz: 0.05, x: bx, y: 1.0 + h * 0.05, z: bz + (sgn > 0 ? -d / 2 - 0.03 : d / 2 + 0.03), ry: ang, c: signCols[(Math.random() * signCols.length) | 0] });
+            var rows = Math.max(1, Math.floor(h / 0.95)), cols = Math.max(1, Math.floor(w / 0.66));
             for (var rr = 0; rr < rows; rr++) {
               for (var cc = 0; cc < cols; cc++) {
-                if (Math.random() < 0.28) continue;
-                winGeo.push({
-                  x: bx + (cc - (cols - 1) / 2) * 0.62 * Math.cos(ang) + (sgn > 0 ? -d / 2 - 0.03 : d / 2 + 0.03) * Math.sin(ang),
-                  y: 0.75 + rr * 0.9,
-                  z: bz - (cc - (cols - 1) / 2) * 0.62 * Math.sin(ang) + (sgn > 0 ? -d / 2 - 0.03 : d / 2 + 0.03) * Math.cos(ang),
+                if (Math.random() < 0.3) continue;
+                var side = sgn > 0 ? -d / 2 - 0.04 : d / 2 + 0.04;
+                Q.win.push({
+                  sx: 0.42, sy: 0.34, sz: 1,
+                  x: bx + (cc - (cols - 1) / 2) * 0.66 * Math.cos(ang) + side * Math.sin(ang),
+                  y: 0.78 + rr * 0.95,
+                  z: bz - (cc - (cols - 1) / 2) * 0.66 * Math.sin(ang) + side * Math.cos(ang),
                   ry: ang,
-                  c: Math.random() < 0.22 ? 0xffd9a0 : (Math.random() < 0.5 ? 0x8fd6ff : 0x2e4a55)
+                  c: Math.random() < 0.2 ? 0xffd9a0 : (Math.random() < 0.5 ? 0x8fd6ff : 0x2e4a55)
                 });
               }
             }
@@ -370,41 +376,21 @@
       }
     });
 
-    if (winGeo.length) {
-      var wm = new T.InstancedMesh(G.plane, new T.MeshBasicMaterial({ vertexColors: false, color: 0xffffff, transparent: true, opacity: 0.85 }), winGeo.length);
-      var dummy = new T.Object3D(), color = new T.Color();
-      winGeo.forEach(function (wg, i) {
-        dummy.position.set(wg.x, wg.y, wg.z);
-        dummy.rotation.set(0, wg.ry, 0);
-        dummy.scale.set(0.42, 0.34, 1);
-        dummy.updateMatrix();
-        wm.setMatrixAt(i, dummy.matrix);
-        color.setHex(wg.c);
-        wm.setColorAt(i, color);
-      });
-      wm.instanceMatrix.needsUpdate = true;
-      if (wm.instanceColor) wm.instanceColor.needsUpdate = true;
-      townRoot.add(wm);
-    }
-
-    /* street lamps */
     curvePts.forEach(function (v3) {
       for (var i = 1; i < v3.length; i += 2) {
         var p = v3[i];
         [-1, 1].forEach(function (sgn) {
-          var off = new T.Vector3(sgn * 1.5, 0, sgn * 0.6);
-          var base = new T.Vector3(p.x + off.x, 0, p.z + off.z);
+          var base = new T.Vector3(p.x + sgn * 1.5, 0, p.z + sgn * 0.6);
           if (Math.hypot(base.x, base.z) < 4.4) return;
-          put(townRoot, G.cyl, mat(0x2b3438, 0x000000, 0), 0.06, 1.7, 0.06, base.x, 0.85, base.z);
-          put(townRoot, G.sphere, mat(0xffc98a, 0xffc98a, 1.6), 0.16, 0.1, 0.16, base.x, 1.72, base.z);
+          Q.pole.push({ sx: 0.06, sy: 1.7, sz: 0.06, x: base.x, y: 0.85, z: base.z, c: 0x2b3438 });
+          Q.lamp.push({ sx: 0.16, sy: 0.1, sz: 0.16, x: base.x, y: 1.72, z: base.z, c: 0xffc98a });
         });
       }
     });
 
-    /* parked cars */
     curvePts.forEach(function (v3) {
       for (var i = 1; i < v3.length - 1; i++) {
-        if (Math.random() < 0.45) continue;
+        if (Math.random() < 0.5) continue;
         var a = v3[i], b = v3[i + 1];
         var dir = new T.Vector3().subVectors(b, a);
         var ang = Math.atan2(dir.x, dir.z);
@@ -412,39 +398,55 @@
         var nrm = new T.Vector3(dir.z, 0, -dir.x).normalize().multiplyScalar(sgn * 0.62);
         var cx2 = a.x + nrm.x, cz2 = a.z + nrm.z;
         if (Math.hypot(cx2, cz2) < 3.6) continue;
-        var car = new T.Group();
-        var tone = [0x2a3038, 0x3a2028, 0x1f2a33, 0x403425][Math.floor(Math.random() * 4)];
-        put(car, G.box, mat(tone, 0x0a1013, 0.08), 0.52, 0.12, 0.24, 0, 0.16, 0);
-        put(car, G.box, mat(0x101a1e, 0x0a1013, 0.05), 0.26, 0.1, 0.22, 0, 0.26, 0);
-        put(car, G.box, mat(0x8fd6ff, 0x8fd6ff, 0.8), 0.1, 0.03, 0.24, 0.24, 0.26, 0);
-        put(car, G.box, mat(0xff5d5d, 0xff5d5d, 0.7), 0.04, 0.04, 0.2, -0.26, 0.2, 0);
-        [[-0.17, 0.1], [-0.17, -0.1], [0.17, 0.1], [0.17, -0.1]].forEach(function (w) {
-          put(car, G.wheel, mat(0x0b1114, 0x000000, 0), 0.09, 0.06, 0.09, w[0], 0.07, w[1], 0, 0, Math.PI / 2);
+        var tone = [0x2a3038, 0x3a2028, 0x1f2a33, 0x403425][(Math.random() * 4) | 0];
+        var ry2 = ang + Math.PI / 2;
+        Q.carBody.push({ sx: 0.52, sy: 0.12, sz: 0.24, x: cx2, y: 0.28, z: cz2, ry: ry2, c: tone });
+        Q.carTop.push({ sx: 0.26, sy: 0.1, sz: 0.22, x: cx2, y: 0.38, z: cz2, ry: ry2, c: 0x101a1e });
+        Q.carGlass.push({ sx: 0.1, sy: 0.03, sz: 0.24, x: cx2 + Math.cos(ry2) * 0.24, y: 0.38, z: cz2 - Math.sin(ry2) * 0.24, ry: ry2, c: 0x8fd6ff });
+        Q.carLamp.push({ sx: 0.04, sy: 0.04, sz: 0.2, x: cx2 - Math.cos(ry2) * 0.26, y: 0.32, z: cz2 + Math.sin(ry2) * 0.26, ry: ry2, c: 0xff5d5d });
+        [[-0.17, 0.1], [-0.17, -0.1], [0.17, 0.1], [0.17, -0.1]].forEach(function (wk) {
+          Q.carWheel.push({ sx: 0.09, sy: 0.06, sz: 0.09, x: cx2 + wk[0] * Math.cos(ry2) + wk[1] * Math.sin(ry2), y: 0.19,
+            z: cz2 - wk[0] * Math.sin(ry2) + wk[1] * Math.cos(ry2), ry: ry2, rx: 0, rz: Math.PI / 2, c: 0x0b1114 });
         });
-        car.position.set(cx2, 0.12, cz2);
-        car.rotation.y = ang + Math.PI / 2;
-        townRoot.add(car);
       }
     });
 
-    /* planters / small trees */
-    for (var t2 = 0; t2 < 16; t2++) {
+    for (var t2 = 0; t2 < 18; t2++) {
       var ao = Math.random() * Math.PI * 2, rad = 5.6 + Math.random() * 9;
       var tx = Math.cos(ao) * rad, tz = Math.sin(ao) * rad;
-      put(townRoot, G.box, mat(0x2a2320, 0x000000, 0), 0.4, 0.24, 0.4, tx, 0.14, tz);
-      put(townRoot, G.cyl, mat(0x3b2a1e, 0x000000, 0), 0.06, 0.7, 0.06, tx, 0.55, tz);
-      put(townRoot, G.ico, mat(0x1f3b2c, 0x1f3b2c, 0.25), 0.8, 0.7, 0.8, tx, 1.05, tz);
+      Q.planter.push({ sx: 0.4, sy: 0.24, sz: 0.4, x: tx, y: 0.14, z: tz, c: 0x2a2320 });
+      Q.trunk.push({ sx: 0.06, sy: 0.7, sz: 0.06, x: tx, y: 0.55, z: tz, c: 0x3b2a1e });
+      Q.leaf.push({ sx: 0.8, sy: 0.7, sz: 0.8, x: tx, y: 1.05, z: tz, c: 0x1f3b2c });
     }
 
-    /* central tower / objective */
+    [["bld", G.box, { rough: 0.85, metal: 0.1 }], ["roof", G.box, { rough: 0.6, metal: 0.3, emissive: 0x0a1013, ei: 0.3 }],
+     ["walk", G.box, { rough: 0.9 }], ["kerb", G.box, { rough: 0.85 }], ["pole", G.cyl, { rough: 0.7 }],
+     ["planter", G.box, { rough: 0.9 }], ["trunk", G.cyl, { rough: 0.9 }],
+     ["carBody", G.box, { rough: 0.5, metal: 0.5 }], ["carTop", G.box, { rough: 0.5 }],
+     ["carWheel", G.wheel, { rough: 0.9 }]
+    ].forEach(function (d) {
+      var m = instancer(d[1], Q[d[0]], d[2]);
+      if (m) townRoot.add(m);
+    });
+    var lampM = instancer(G.sphere, Q.lamp, { emissive: 0xffc98a, ei: 1.6, rough: 0.4 }, 1);
+    if (lampM) { lampM.material = new T.MeshBasicMaterial({ color: 0xffc98a, transparent: true, opacity: 0.95 }); townRoot.add(lampM); }
+    var leafM = instancer(G.ico, Q.leaf, { emissive: 0x16281d, ei: 0.3, rough: 0.9 });
+    if (leafM) townRoot.add(leafM);
+    var glassM = instancer(G.box, Q.carGlass, { emissive: 0x8fd6ff, ei: 0.7, rough: 0.2 }, 1);
+    if (glassM) townRoot.add(glassM);
+    var carLampM = instancer(G.box, Q.carLamp, { emissive: 0xff5d5d, ei: 0.9, rough: 0.4 }, 1);
+    if (carLampM) townRoot.add(carLampM);
+    var winM = instancer(G.plane, Q.win, { basic: true }, 0.9);
+    if (winM) townRoot.add(winM);
+
+    /* central tower */
     coreGroup = new T.Group();
     put(coreGroup, G.cyl, mat(0x2a3438, 0x0b1114, 0.06), 3.0, 0.24, 3.0, 0, 0.12, 0);
     put(coreGroup, G.cyl, mat(0x1f2a2f, 0x0b1114, 0.05), 1.5, 0.9, 1.5, 0, 0.5, 0);
     put(coreGroup, G.cyl, mat(0x243036, 0x0b1114, 0.05), 1.05, 1.5, 1.05, 0, 1.6, 0);
     for (var f = 0; f < 4; f++) {
       var fa = (f / 4) * Math.PI * 2;
-      put(coreGroup, G.box, mat(0x2f3c42, 0x38f5e0, 0.5), 0.1, 2.2, 0.34,
-        Math.cos(fa) * 1.06, 1.8, Math.sin(fa) * 1.06, 0, -fa, 0);
+      put(coreGroup, G.box, mat(0x2f3c42, 0x38f5e0, 0.5), 0.1, 2.2, 0.34, Math.cos(fa) * 1.06, 1.8, Math.sin(fa) * 1.06, 0, -fa, 0);
     }
     coreGroup.userData.ring = put(coreGroup, G.torus, mat(0x8fd6ff, 0x8fd6ff, 0.9), 1.5, 1.5, 1.5, 0, 3.1, 0, Math.PI / 2.2);
     var orb = new T.Mesh(new T.IcosahedronGeometry(0.52, 1), new T.MeshStandardMaterial({
@@ -599,6 +601,11 @@
   };
 
   /* ================= frame ================= */
+  A.stats = function () {
+    if (!A.ok) return null;
+    return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, meshes: scene.children.length };
+  };
+
   A.render = function () {
     if (!A.ok) return;
     var dt = Math.min(0.05, clock.getDelta());
