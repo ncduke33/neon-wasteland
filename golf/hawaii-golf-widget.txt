@@ -132,8 +132,6 @@ if (!data || !data.stats) {
   e2.font = Font.boldSystemFont(9);
   e2.textColor = GOLD;
   w.url = "scriptable:///run/" + encodeURIComponent(LIVE_SCRIPT);
-  Script.setWidget(w);
-  Script.complete();
 } else {
   var st = data.stats;
   var rounds = data.rounds || [];
@@ -255,7 +253,20 @@ if (!data || !data.stats) {
     s.font = Font.systemFont(7);
     s.textColor = new Color("#5a5a5a");
   }
+}
 
+// Widget = render silently. Run in the app = show a live preview so you can see it working.
+if (typeof config !== "undefined" && config.runsInWidget) {
   Script.setWidget(w);
   Script.complete();
+} else if (!data || !data.stats) {
+  var al = new Alert();
+  al.title = "Could not load your rounds";
+  al.message = res.err || "unknown error";
+  al.addAction("Preview anyway");
+  al.present().then(function () {
+    w.presentMedium().then(function () { Script.complete(); });
+  });
+} else {
+  w.presentMedium().then(function () { Script.complete(); });
 }
