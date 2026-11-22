@@ -2,7 +2,7 @@
    three.js (MIT). No external art assets. */
 (function () {
   var T = window.THREE;
-  var A = { ok: false, W: 0, H: 0, PPU: 34, zoom: 0.95, can3d: false };
+  var A = { ok: false, W: 0, H: 0, PPU: 34, zoom: 0.95, can3d: false, panX: 0, panZ: 0 };
   window.NW3D = A;
   if (!T) return;
   try {
@@ -39,12 +39,15 @@
     G.wheel = new T.CylinderGeometry(0.5, 0.5, 0.24, 10);
   }
   function mat(color, em, inten) {
-    var k = color + "|" + (em === undefined ? color : em) + "|" + (inten === undefined ? 0.35 : inten);
+    /* emissive only when a caller asks for it, otherwise every surface glows and the scene greys out */
+    var emc = em === undefined ? 0x000000 : em;
+    var ei = inten === undefined ? 0 : inten;
+    var k = color + "|" + emc + "|" + ei;
     if (MATC[k]) return MATC[k];
     var m = new T.MeshStandardMaterial({
-      color: color, emissive: em === undefined ? color : em,
-      emissiveIntensity: inten === undefined ? 0.35 : inten,
-      metalness: 0.35, roughness: 0.62
+      color: color, emissive: emc,
+      emissiveIntensity: ei,
+      metalness: 0.42, roughness: 0.55
     });
     MATC[k] = m;
     return m;
@@ -73,18 +76,19 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
     renderer.toneMapping = T.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.12;
-    if (renderer.outputEncoding !== undefined) renderer.outputEncoding = T.sRGBEncoding;
+    renderer.toneMappingExposure = 0.78;
+    /* r150 outputs sRGB by default; forcing outputEncoding here double-encoded and washed the scene out */
+    if (renderer.outputColorSpace !== undefined && T.SRGBColorSpace) renderer.outputColorSpace = T.SRGBColorSpace;
 
     scene = new T.Scene();
-    scene.background = new T.Color(0x070d11);
-    scene.fog = new T.FogExp2(0x070d11, 0.012);
+    scene.background = new T.Color(0x04070d);
+    scene.fog = new T.FogExp2(0x060a14, 0.016);
 
     camera = new T.PerspectiveCamera(46, w / h, 0.1, 400);
 
-    var hemi = new T.HemisphereLight(0x5fa8c8, 0x14181f, 1.35);
+    var hemi = new T.HemisphereLight(0x35447a, 0x06080e, 0.18);
     scene.add(hemi);
-    var moon = new T.DirectionalLight(0xd6f0ff, 1.5);
+    var moon = new T.DirectionalLight(0x9fb8ff, 0.24);
     moon.position.set(-16, 26, 14);
     moon.castShadow = true;
     moon.shadow.mapSize.width = 1024;
@@ -97,16 +101,16 @@
     moon.shadow.camera.bottom = -22;
     moon.shadow.bias = -0.0008;
     scene.add(moon);
-    var warm = new T.DirectionalLight(0xff8a3d, 0.75);
+    var warm = new T.DirectionalLight(0xff5a3d, 0.09);
     warm.position.set(16, 9, -16);
     scene.add(warm);
-    var rimCyan = new T.DirectionalLight(0x38f5e0, 0.55);
+    var rimCyan = new T.DirectionalLight(0x38f5e0, 0.34);
     rimCyan.position.set(0, 6, 20);
     scene.add(rimCyan);
-    var rimPink = new T.DirectionalLight(0xff3d8b, 0.4);
+    var rimPink = new T.DirectionalLight(0xb04dff, 0.30);
     rimPink.position.set(-18, 5, -12);
     scene.add(rimPink);
-    coreLight = new T.PointLight(0xff9a4d, 2.6, 40, 2);
+    coreLight = new T.PointLight(0xff9a4d, 0.85, 16, 2);
     coreLight.position.set(0, 3.2, 0);
     scene.add(coreLight);
 
@@ -120,11 +124,27 @@
   function position() {
     var span = A.W / A.PPU;
     var dist = Math.max(7.4, span * 0.62) / (A.zoom || 1);
-    camera.position.set(0, dist * 0.94, dist * 0.62);
-    camera.lookAt(0, 0.6, 0);
+    var lim = A.panLimit();
+    A.panX = Math.max(-lim, Math.min(lim, A.panX));
+    A.panZ = Math.max(-lim, Math.min(lim, A.panZ));
+    camera.position.set(A.panX, dist * 0.94, A.panZ + dist * 0.62);
+    camera.lookAt(A.panX, 0.6, A.panZ);
     camera.aspect = A.W / A.H;
     camera.updateProjectionMatrix();
   }
+  A.panLimit = function () { return 11; };
+  A.panBy = function (dxPx, dyPx) {
+    if (!A.ok) return;
+    var span = A.W / A.PPU;
+    var dist = Math.max(7.4, span * 0.62) / (A.zoom || 1);
+    var worldPerPx = (dist * 1.05) / Math.max(1, A.H);
+    A.panX -= dxPx * worldPerPx * 1.6;
+    A.panZ -= dyPx * worldPerPx * 2.1;
+    position();
+  };
+  A.panTo = function (wx, wz) { A.panX = wx; A.panZ = wz; if (A.ok) position(); };
+  A.recenter = function () { A.panTo(0, 0); };
+  A.getPan = function () { return { x: A.panX, z: A.panZ }; };
   A.setZoom = function (z) { A.zoom = Math.min(3.0, Math.max(0.55, z)); if (A.ok) position(); return A.zoom; };
   A.getZoom = function () { return A.zoom; };
   A.resize = function (w, h) { if (!A.ok) return; A.W = w; A.H = h; renderer.setSize(w, h, false); position(); };
@@ -307,43 +327,60 @@
   /* ================= town ================= */
   function instancer(geo, items, mtlOpt, opacity) {
     if (!items.length) return null;
-    var material = new T.MeshStandardMaterial({
-      color: 0xffffff, metalness: mtlOpt && mtlOpt.metal !== undefined ? mtlOpt.metal : 0.2,
-      roughness: mtlOpt && mtlOpt.rough !== undefined ? mtlOpt.rough : 0.8,
-      transparent: opacity !== undefined, opacity: opacity === undefined ? 1 : opacity,
-      emissive: mtlOpt && mtlOpt.emissive !== undefined ? mtlOpt.emissive : 0x000000,
-      emissiveIntensity: mtlOpt && mtlOpt.ei !== undefined ? mtlOpt.ei : 0.4
+    /* bucket by colour and give each bucket its own material colour.
+       per-instance colours were silently ignored by the shader, which turned every building white. */
+    var buckets = {}, order = [];
+    items.forEach(function (it) {
+      var key = it.c === undefined ? 0xffffff : it.c;
+      if (!buckets[key]) { buckets[key] = []; order.push(key); }
+      buckets[key].push(it);
     });
-    if (mtlOpt && mtlOpt.basic) material = new T.MeshBasicMaterial({ color: 0xffffff, transparent: opacity !== undefined, opacity: opacity === undefined ? 1 : opacity });
-    var mesh = new T.InstancedMesh(geo, material, items.length);
-    var dummy = new T.Object3D(), col = new T.Color();
-    items.forEach(function (it, i) {
-      dummy.position.set(it.x, it.y, it.z);
-      dummy.rotation.set(it.rx || 0, it.ry || 0, it.rz || 0);
-      dummy.scale.set(it.sx, it.sy, it.sz);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      col.setHex(it.c === undefined ? 0xffffff : it.c);
-      mesh.setColorAt(i, col);
+    var group = new T.Group();
+    var dummy = new T.Object3D();
+    order.forEach(function (key) {
+      var list = buckets[key];
+      var material = new T.MeshStandardMaterial({
+        color: key,
+        metalness: mtlOpt && mtlOpt.metal !== undefined ? mtlOpt.metal : 0.2,
+        roughness: mtlOpt && mtlOpt.rough !== undefined ? mtlOpt.rough : 0.8,
+        transparent: opacity !== undefined,
+        opacity: opacity === undefined ? 1 : opacity,
+        emissive: mtlOpt && mtlOpt.emissive === "self" ? key : (mtlOpt && mtlOpt.emissive !== undefined ? mtlOpt.emissive : 0x000000),
+        emissiveIntensity: mtlOpt && mtlOpt.ei !== undefined ? mtlOpt.ei : 0
+      });
+      if (mtlOpt && mtlOpt.basic) {
+        material = new T.MeshBasicMaterial({ color: key, transparent: opacity !== undefined, opacity: opacity === undefined ? 1 : opacity });
+      }
+      var mesh = new T.InstancedMesh(geo, material, list.length);
+      list.forEach(function (it, idx) {
+        dummy.position.set(it.x, it.y, it.z);
+        dummy.rotation.set(it.rx || 0, it.ry || 0, it.rz || 0);
+        dummy.scale.set(it.sx, it.sy, it.sz);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(idx, dummy.matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.frustumCulled = false;
+      mesh.userData.baseColor = key;
+      group.add(mesh);
     });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.frustumCulled = false;
-    return mesh;
+    return group;
   }
+
+
 
   function buildTown(paths) {
     townRoot = new T.Group();
     scene.add(townRoot);
     fadeMeshes = [];
-    var Q = { bld: [], roof: [], kerb: [], walk: [], pole: [], lamp: [], planter: [], trunk: [], leaf: [], win: [], carBody: [], carTop: [], carGlass: [], carLamp: [], carWheel: [], walkLine: [] };
+    var Q = { bld: [], roof: [], kerb: [], walk: [], pole: [], lamp: [], planter: [], trunk: [], leaf: [], win: [], carBody: [], carTop: [], carGlass: [], carLamp: [], carWheel: [], walkLine: [], neonBox: [] };
 
-    var ground = new T.Mesh(new T.PlaneGeometry(90, 90), new T.MeshStandardMaterial({ color: 0x1a2028, metalness: 0.18, roughness: 0.9 }));
+    var ground = new T.Mesh(new T.PlaneGeometry(90, 90), new T.MeshStandardMaterial({ color: 0x0d1620, metalness: 0.22, roughness: 0.92 }));
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     townRoot.add(ground);
     /* district colour washes so the board is not one flat tone */
-    var washes = [[0x38f5e0, -6.5, 4.2], [0xff3d8b, 7.2, 3.4], [0xffb457, 3.4, -6.6], [0x7dffb0, -4.8, -5.8]];
+    var washes = [[0x38f5e0, -6.5, 4.2], [0xff3d8b, 7.2, 3.4], [0x4a6bff, 3.4, -6.6], [0x7dffb0, -4.8, -5.8]];
     washes.forEach(function (wsh) {
       var patch = new T.Mesh(new T.CircleGeometry(3.6, 26),
         new T.MeshBasicMaterial({ color: wsh[0], transparent: true, opacity: 0.07 }));
@@ -394,8 +431,34 @@
     });
 
     var used = [];
-    var tones = [0x1e3a44, 0x2a2440, 0x3a2430, 0x1f3327, 0x2c2f4a, 0x402a1e];
-    var signCols = [0x38f5e0, 0xff5d5d, 0xffd24a, 0xc07bff, 0x7dffb0];
+    var hulls = [0x0a6b7d, 0x4a1a8c, 0x8c1a3c, 0x0a7a52, 0x1a2a9c, 0x9c4a10];
+    var signCols = [0x38f5e0, 0xff5d5d, 0xffd24a, 0xc07bff, 0x7dffb0, 0xff8a3d];
+    var NAMES = ["NEON HAVEN", "TECHWORKS", "DORADO ARMS", "CYBER MART", "SYNAPSE CLINIC", "ZETA CAFE",
+                 "VOLT BAR", "GHOST NOODLES", "CHROME DEN", "HEX PAWN", "AURA SPA", "RAZOR TATTOO",
+                 "PULSE CLUB", "IRON GYM", "OMEGA CORP", "DATA HAVEN"];
+    var SIGN_CSS = ["#38f5e0", "#ff5d5d", "#ffd24a", "#c07bff", "#7dffb0", "#ff8a3d"];
+    var signTexCache = {};
+    function signTexture(name, css) {
+      var key = name + css;
+      if (signTexCache[key]) return signTexCache[key];
+      var cv = document.createElement("canvas"); cv.width = 256; cv.height = 64;
+      var cx = cv.getContext("2d");
+      cx.fillStyle = "#05080c"; cx.fillRect(0, 0, 256, 64);
+      cx.strokeStyle = css; cx.lineWidth = 3; cx.strokeRect(3, 3, 250, 58);
+      cx.font = "700 26px 'Arial Narrow',Arial,sans-serif";
+      cx.textAlign = "center"; cx.textBaseline = "middle";
+      cx.shadowColor = css; cx.shadowBlur = 14; cx.fillStyle = "#ffffff";
+      cx.fillText(name, 128, 34, 236);
+      cx.shadowBlur = 6; cx.fillStyle = css; cx.fillText(name, 128, 34, 236);
+      var tex = new T.CanvasTexture(cv);
+      if (T.sRGBEncoding && tex.encoding !== undefined) tex.encoding = T.sRGBEncoding;
+      signTexCache[key] = tex;
+      return tex;
+    }
+    var detail = new T.Group();            /* one-off detail meshes (signs, tanks) */
+    townRoot.add(detail);
+    var nameIx = 0;
+
     curvePts.forEach(function (v3) {
       for (var i = 1; i < v3.length; i++) {
         var a = v3[i - 1], b = v3[i];
@@ -405,34 +468,104 @@
           for (var k = 0; k < 2; k++) {
             var t = 0.28 + k * 0.5;
             var px = a.x + dir.x * t, pz = a.z + dir.z * t;
-            var nrm = new T.Vector3(dir.z, 0, -dir.x).normalize().multiplyScalar(sgn * (3.7 + Math.random() * 2.1));
+            var nrm = new T.Vector3(dir.z, 0, -dir.x).normalize().multiplyScalar(sgn * (3.9 + Math.random() * 2.0));
             var bx = px + nrm.x, bz = pz + nrm.z;
-            if (Math.hypot(bx, bz) < 5.2) continue;
-            if (used.some(function (u) { return Math.hypot(u.x - bx, u.z - bz) < 2.4; })) continue;
+            if (Math.hypot(bx, bz) < 5.6) continue;
+            if (used.some(function (u) { return Math.hypot(u.x - bx, u.z - bz) < 2.9; })) continue;
             used.push({ x: bx, z: bz });
-            var w = 1.5 + Math.random() * 1.5, d = 1.5 + Math.random() * 1.5, h = 1.4 + Math.random() * 3.4;
-            Q.bld.push({ sx: w, sy: h, sz: d, x: bx, y: h / 2 + 0.1, z: bz, ry: ang, c: tones[(Math.random() * tones.length) | 0] });
-            Q.roof.push({ sx: w * 0.9, sy: 0.05, sz: d * 0.9, x: bx, y: h + 0.12, z: bz, ry: ang, c: 0x0e1518 });
+
+            var w = 1.7 + Math.random() * 1.4, d = 1.7 + Math.random() * 1.3;
+            var h = 1.5 + Math.random() * 2.6;
+            var hull = hulls[(Math.random() * hulls.length) | 0];
             var neon = signCols[(Math.random() * signCols.length) | 0];
-            var ex = Math.cos(ang) * (w / 2 - 0.04), ez = -Math.sin(ang) * (w / 2 - 0.04);
-            Q.roof.push({ sx: 0.05, sy: h * 0.86, sz: 0.05, x: bx + ex, y: h * 0.46, z: bz + ez, ry: ang, c: neon });
-            Q.roof.push({ sx: 0.05, sy: h * 0.86, sz: 0.05, x: bx - ex, y: h * 0.46, z: bz - ez, ry: ang, c: neon });
-            Q.roof.push({ sx: w * 0.5, sy: 0.16, sz: 0.05, x: bx, y: 1.0 + h * 0.05, z: bz + (sgn > 0 ? -d / 2 - 0.03 : d / 2 + 0.03), ry: ang, c: signCols[(Math.random() * signCols.length) | 0] });
-            var rows = Math.max(1, Math.floor(h / 0.95)), cols = Math.max(1, Math.floor(w / 0.66));
-            for (var rr = 0; rr < rows; rr++) {
-              for (var cc = 0; cc < cols; cc++) {
-                if (Math.random() < 0.3) continue;
-                var side = sgn > 0 ? -d / 2 - 0.04 : d / 2 + 0.04;
-                Q.win.push({
-                  sx: 0.42, sy: 0.34, sz: 1,
-                  x: bx + (cc - (cols - 1) / 2) * 0.66 * Math.cos(ang) + side * Math.sin(ang),
-                  y: 0.78 + rr * 0.95,
-                  z: bz - (cc - (cols - 1) / 2) * 0.66 * Math.sin(ang) + side * Math.cos(ang),
-                  ry: ang,
-                  c: Math.random() < 0.2 ? 0xffd9a0 : (Math.random() < 0.5 ? 0x8fd6ff : 0x2e4a55)
-                });
+            var css = SIGN_CSS[signCols.indexOf(neon)];
+            var cs = Math.cos(ang), sn = Math.sin(ang);
+            /* local to world: x along building width, z along depth */
+            function W(lx, lz) { return { x: bx + lx * cs + lz * sn, z: bz - lx * sn + lz * cs }; }
+
+            /* podium + main hull + two stepped upper tiers */
+            Q.bld.push({ sx: w * 1.12, sy: 0.22, sz: d * 1.12, x: bx, y: 0.21, z: bz, ry: ang, c: 0x0d1318 });
+            Q.bld.push({ sx: w, sy: h, sz: d, x: bx, y: h / 2 + 0.32, z: bz, ry: ang, c: hull });
+            var h2 = h * (0.34 + Math.random() * 0.2);
+            Q.bld.push({ sx: w * 0.76, sy: h2, sz: d * 0.76, x: bx, y: h + 0.32 + h2 / 2, z: bz, ry: ang, c: hull });
+            var h3 = h2 * 0.5;
+            Q.bld.push({ sx: w * 0.46, sy: h3, sz: d * 0.46, x: bx, y: h + h2 + 0.32 + h3 / 2, z: bz, ry: ang, c: hull });
+            var topY = h + h2 + h3 + 0.32;
+
+            /* dark armour plating bands + rooftop trim */
+            for (var band = 1; band < 3; band++) {
+              Q.roof.push({ sx: w * 1.04, sy: 0.07, sz: d * 1.04, x: bx, y: 0.32 + (h * band) / 3, z: bz, ry: ang, c: 0x0a0f14 });
+            }
+            Q.roof.push({ sx: w * 1.06, sy: 0.08, sz: d * 1.06, x: bx, y: h + 0.34, z: bz, ry: ang, c: 0x080c10 });
+
+            /* neon edge strips on the four vertical corners */
+            [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (cn) {
+              var p = W(cn[0] * (w / 2), cn[1] * (d / 2));
+              Q.neonBox.push({ sx: 0.045, sy: h * 0.9, sz: 0.045, x: p.x, y: 0.32 + h * 0.46, z: p.z, ry: ang, c: neon });
+            });
+            /* glowing roofline */
+            Q.neonBox.push({ sx: w * 1.02, sy: 0.05, sz: 0.05, x: W(0, d / 2).x, y: h + 0.4, z: W(0, d / 2).z, ry: ang, c: neon });
+            Q.neonBox.push({ sx: w * 1.02, sy: 0.05, sz: 0.05, x: W(0, -d / 2).x, y: h + 0.4, z: W(0, -d / 2).z, ry: ang, c: neon });
+
+            /* rooftop machinery: AC blocks, vents, pipes */
+            var nUnits = 2 + ((Math.random() * 3) | 0);
+            for (var u = 0; u < nUnits; u++) {
+              var ux = (Math.random() - 0.5) * w * 0.7, uz = (Math.random() - 0.5) * d * 0.7;
+              var uw = 0.22 + Math.random() * 0.3, uh = 0.12 + Math.random() * 0.2;
+              var up = W(ux, uz);
+              Q.roof.push({ sx: uw, sy: uh, sz: uw * 0.8, x: up.x, y: h + 0.4 + uh / 2, z: up.z, ry: ang, c: 0x1c262d });
+              Q.roof.push({ sx: uw * 0.7, sy: 0.03, sz: uw * 0.55, x: up.x, y: h + 0.4 + uh + 0.02, z: up.z, ry: ang, c: 0x0a1014 });
+            }
+            /* antenna mast with a blinking beacon colour */
+            var ap = W(w * 0.3, d * 0.28);
+            Q.pole.push({ sx: 0.035, sy: 0.9, sz: 0.035, x: ap.x, y: topY + 0.45, z: ap.z, c: 0x2a363d });
+            Q.neonBox.push({ sx: 0.09, sy: 0.09, sz: 0.09, x: ap.x, y: topY + 0.95, z: ap.z, c: 0xff3b4a });
+            /* water tank on the stepped tier */
+            if (Math.random() < 0.6) {
+              var tp = W(-w * 0.22, d * 0.1);
+              Q.trunk.push({ sx: 0.34, sy: 0.3, sz: 0.34, x: tp.x, y: topY + 0.15, z: tp.z, c: 0x2c3a42 });
+            }
+
+            /* big readable sign on the street-facing side */
+            var face = sgn > 0 ? -1 : 1;
+            var sp = W(0, face * (d / 2 + 0.05));
+            var signName = NAMES[nameIx++ % NAMES.length];
+            var signMesh = new T.Mesh(new T.PlaneGeometry(w * 0.84, w * 0.84 * 0.25),
+              new T.MeshBasicMaterial({ map: signTexture(signName, css), transparent: false, toneMapped: false }));
+            signMesh.position.set(sp.x, 0.32 + h * 0.8, sp.z);
+            signMesh.rotation.y = ang + (face > 0 ? 0 : Math.PI);
+            detail.add(signMesh);
+            /* sign halo */
+            Q.neonBox.push({ sx: w * 0.9, sy: 0.04, sz: 0.05, x: sp.x, y: 0.32 + h * 0.8 - w * 0.115, z: sp.z, ry: ang, c: neon });
+
+            /* ground floor shopfront glow + door */
+            var sf = W(0, face * (d / 2 + 0.035));
+            Q.win.push({ sx: w * 0.7, sy: 0.38, sz: 1, x: sf.x, y: 0.62, z: sf.z, ry: ang + (face > 0 ? 0 : Math.PI), c: 0xffd9a0 });
+            var dp = W(w * 0.34, face * (d / 2 + 0.04));
+            Q.win.push({ sx: 0.2, sy: 0.46, sz: 1, x: dp.x, y: 0.55, z: dp.z, ry: ang + (face > 0 ? 0 : Math.PI), c: neon });
+
+            /* side staircase: a run of stepped blocks */
+            if (Math.random() < 0.55) {
+              for (var st = 0; st < 4; st++) {
+                var spz = W(w / 2 + 0.12 + st * 0.02, -d * 0.25 + st * 0.12);
+                Q.kerb.push({ sx: 0.22, sy: 0.07 + st * 0.07, sz: 0.2, x: spz.x, y: 0.2 + (0.07 + st * 0.07) / 2, z: spz.z, ry: ang, c: 0x252f36 });
               }
             }
+
+            /* window grid on both visible faces, warm and neon mix, with flicker variety */
+            var rows = Math.max(2, Math.floor(h / 0.5)), cols = Math.max(2, Math.floor(w / 0.42));
+            [face, -face].forEach(function (fs, fi) {
+              for (var rr = 1; rr < rows; rr++) {
+                for (var cc = 0; cc < cols; cc++) {
+                  var roll = Math.random();
+                  if (roll < 0.26) continue;
+                  var wp = W((cc - (cols - 1) / 2) * (w / cols), fs * (d / 2 + 0.03));
+                  var col = roll < 0.55 ? 0xffc27a : (roll < 0.75 ? neon : (roll < 0.9 ? 0xff9a4d : 0x8fd6ff));
+                  Q.win.push({ sx: 0.19, sy: 0.24, sz: 1, x: wp.x, y: 0.32 + (rr * h) / rows, z: wp.z,
+                    ry: ang + (fs > 0 ? Math.PI : 0), c: col });
+                }
+              }
+            });
           }
         });
       }
@@ -481,7 +614,7 @@
       Q.leaf.push({ sx: 0.8, sy: 0.7, sz: 0.8, x: tx, y: 1.05, z: tz, c: 0x1f3b2c });
     }
 
-    [["bld", G.box, { rough: 0.85, metal: 0.1 }], ["roof", G.box, { rough: 0.6, metal: 0.3, emissive: 0x0a1013, ei: 0.3 }],
+    [["bld", G.box, { rough: 0.85, metal: 0.1, emissive: "self", ei: 0.34 }], ["roof", G.box, { rough: 0.6, metal: 0.3, emissive: 0x0a1013, ei: 0.3 }],
      ["walk", G.box, { rough: 0.9 }], ["kerb", G.box, { rough: 0.85 }], ["pole", G.cyl, { rough: 0.7 }],
      ["planter", G.box, { rough: 0.9 }], ["trunk", G.cyl, { rough: 0.9 }],
      ["carBody", G.box, { rough: 0.5, metal: 0.5 }], ["carTop", G.box, { rough: 0.5 }],
@@ -491,15 +624,22 @@
       if (m) {
         townRoot.add(m);
         if (d[0] === "bld" || d[0] === "roof") {
-          m.material.transparent = true;
-          m.material.opacity = 1;
-          m.material.depthWrite = false;
-          fadeMeshes.push(m);
+          m.children.forEach(function (mm) {
+            mm.material.transparent = true;
+            mm.material.opacity = 1;
+            mm.material.depthWrite = false;
+            fadeMeshes.push(mm);
+          });
         }
       }
     });
+    var neonM = instancer(G.box, Q.neonBox, { emissive: "self", ei: 2.4, rough: 0.35 }, 1);
+    if (neonM) { townRoot.add(neonM); }
     var lampM = instancer(G.sphere, Q.lamp, { emissive: 0xffc98a, ei: 1.6, rough: 0.4 }, 1);
-    if (lampM) { lampM.material = new T.MeshBasicMaterial({ color: 0xffc98a, transparent: true, opacity: 0.95 }); townRoot.add(lampM); }
+    if (lampM) {
+      lampM.children.forEach(function (mm) { mm.material = new T.MeshBasicMaterial({ color: 0xffc98a, transparent: true, opacity: 0.95 }); });
+      townRoot.add(lampM);
+    }
     var leafM = instancer(G.ico, Q.leaf, { emissive: 0x16281d, ei: 0.3, rough: 0.9 });
     if (leafM) townRoot.add(leafM);
     var glassM = instancer(G.box, Q.carGlass, { emissive: 0x8fd6ff, ei: 0.7, rough: 0.2 }, 1);
@@ -520,6 +660,27 @@
     var trim = new T.Mesh(new T.TorusGeometry(3.12, 0.045, 8, 8), mat(0x38f5e0, 0x38f5e0, 1.4));
     trim.rotation.x = Math.PI / 2; trim.rotation.z = Math.PI / 8; trim.position.y = 0.27;
     coreGroup.add(trim);
+
+    /* glowing fenced plinth: railing posts + twin rails around the objective */
+    for (var pf2 = 0; pf2 < 28; pf2++) {
+      var pa2 = (pf2 / 28) * Math.PI * 2;
+      var pr = 3.02;
+      put(coreGroup, G.cyl, mat(0x39444d, 0x0b1114, 0.05), 0.05, 0.52, 0.05, Math.cos(pa2) * pr, 0.42, Math.sin(pa2) * pr);
+      put(coreGroup, G.sphere, mat(0x38f5e0, 0x38f5e0, 1.6), 0.06, 0.06, 0.06, Math.cos(pa2) * pr, 0.7, Math.sin(pa2) * pr);
+    }
+    [0.34, 0.56].forEach(function (ry) {
+      var rail = new T.Mesh(new T.TorusGeometry(3.02, 0.022, 6, 56), mat(0x8fd6ff, 0x8fd6ff, 1.3));
+      rail.rotation.x = Math.PI / 2;
+      rail.position.y = ry;
+      coreGroup.add(rail);
+    });
+    /* light spilling up out of the plinth */
+    var plinthGlow = new T.Mesh(new T.CircleGeometry(2.9, 40),
+      new T.MeshBasicMaterial({ color: 0x38f5e0, transparent: true, opacity: 0.10 }));
+    plinthGlow.rotation.x = -Math.PI / 2;
+    plinthGlow.position.y = 0.29;
+    coreGroup.add(plinthGlow);
+    coreGroup.userData.plinthGlow = plinthGlow;
 
     /* eight buttresses with lit edges */
     for (var bf = 0; bf < 8; bf++) {
@@ -733,6 +894,24 @@
   };
 
   /* ================= frame ================= */
+  A.probe = function (nx, ny) {
+    if (!A.ok) return null;
+    var rc = new T.Raycaster();
+    rc.setFromCamera(new T.Vector2(nx === undefined ? 0 : nx, ny === undefined ? 0 : ny), camera);
+    return rc.intersectObjects(scene.children, true).slice(0, 5).map(function (h) {
+      var m = h.object.material;
+      return {
+        d: +h.distance.toFixed(2),
+        geo: h.object.geometry ? h.object.geometry.type : "?",
+        col: m && m.color ? m.color.getHexString() : "?",
+        op: m && m.opacity !== undefined ? m.opacity : 1,
+        sc: [+h.object.scale.x.toFixed(2), +h.object.scale.y.toFixed(2), +h.object.scale.z.toFixed(2)],
+        pos: [+h.object.position.x.toFixed(1), +h.object.position.y.toFixed(1), +h.object.position.z.toFixed(1)]
+      };
+    });
+  };
+  A.hideTown = function (on) { if (townRoot) townRoot.visible = !on; };
+  A.hideCore = function (on) { if (coreGroup) coreGroup.visible = !on; };
   A.stats = function () {
     if (!A.ok) return null;
     return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, meshes: scene.children.length };
@@ -764,11 +943,15 @@
     adapt(dt);
 
     if (fadeMeshes.length) {
-      var ft = A.zoom < 0.8 ? 0.16 : (A.zoom < 1.15 ? 0.42 : (A.zoom < 1.7 ? 0.75 : 1));
+      var ft = A.zoom >= 0.95 ? 1 : (A.zoom <= 0.72 ? 0 : (A.zoom - 0.72) / 0.23);
       for (var fi = 0; fi < fadeMeshes.length; fi++) {
-        var mm = fadeMeshes[fi].material;
-        mm.opacity += (ft - mm.opacity) * Math.min(1, dt * 5);
-        mm.depthWrite = mm.opacity > 0.92;
+        var mesh = fadeMeshes[fi];
+        var mm = mesh.material;
+        mm.opacity += (ft - mm.opacity) * Math.min(1, dt * 7);
+        var solid = mm.opacity > 0.99;
+        mm.transparent = !solid;
+        mm.depthWrite = solid;
+        mesh.visible = mm.opacity > 0.03;
       }
     }
     if (coreGroup && coreGroup.userData.orb) {
@@ -786,6 +969,9 @@
       if (coreGroup.userData.halo) {
         coreGroup.userData.halo.position.y = coreGroup.userData.orb.position.y;
         coreGroup.userData.halo.rotation.z += dt * 0.9;
+      }
+      if (coreGroup.userData.plinthGlow) {
+        coreGroup.userData.plinthGlow.material.opacity = 0.10 + Math.sin(time * 1.7) * 0.04;
       }
       if (coreGroup.userData.dome) {
         coreGroup.userData.dome.material.opacity = 0.04 + Math.sin(time * 1.3) * 0.015;
