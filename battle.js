@@ -1184,7 +1184,7 @@
   }
 
   function loop(ts) {
-    if (V3) { B.scoutT = (B.scoutT || 0) + dt; if (B.scoutT > 0.12) { B.scoutT = 0; updateScout(); } }
+    if (V3) { var __now = Date.now(); if (!B.scoutAt || __now - B.scoutAt > 110) { B.scoutAt = __now; updateScout(); } }
     if (!B.last) B.last = ts;
     var dt = Math.min(0.05, (ts - B.last) / 1000) * B.speed;
     B.last = ts;
