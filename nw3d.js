@@ -2,7 +2,7 @@
    three.js (MIT). No external art assets. */
 (function () {
   var T = window.THREE;
-  var A = { ok: false, W: 0, H: 0, PPU: 34, zoom: 0.74, can3d: false };
+  var A = { ok: false, W: 0, H: 0, PPU: 34, zoom: 0.95, can3d: false };
   window.NW3D = A;
   if (!T) return;
   try {
@@ -19,7 +19,7 @@
   var SKIN = 0xb9a08a, SKIN_DARK = 0x8a6f5c;
 
   var renderer, scene, camera, raycaster, clock, time = 0;
-  var townRoot, coreGroup, ringArcs = [], coreLight;
+  var townRoot, coreGroup, ringArcs = [], coreLight, fadeMeshes = [];
   var effects = [];
   var G = {}, MATC = {};
 
@@ -335,6 +335,7 @@
   function buildTown(paths) {
     townRoot = new T.Group();
     scene.add(townRoot);
+    fadeMeshes = [];
     var Q = { bld: [], roof: [], kerb: [], walk: [], pole: [], lamp: [], planter: [], trunk: [], leaf: [], win: [], carBody: [], carTop: [], carGlass: [], carLamp: [], carWheel: [], walkLine: [] };
 
     var ground = new T.Mesh(new T.PlaneGeometry(90, 90), new T.MeshStandardMaterial({ color: 0x1a2028, metalness: 0.18, roughness: 0.9 }));
@@ -393,7 +394,7 @@
     });
 
     var used = [];
-    var tones = [0x222c31, 0x1d262b, 0x26313a, 0x1a2328];
+    var tones = [0x1e3a44, 0x2a2440, 0x3a2430, 0x1f3327, 0x2c2f4a, 0x402a1e];
     var signCols = [0x38f5e0, 0xff5d5d, 0xffd24a, 0xc07bff, 0x7dffb0];
     curvePts.forEach(function (v3) {
       for (var i = 1; i < v3.length; i++) {
@@ -404,14 +405,18 @@
           for (var k = 0; k < 2; k++) {
             var t = 0.28 + k * 0.5;
             var px = a.x + dir.x * t, pz = a.z + dir.z * t;
-            var nrm = new T.Vector3(dir.z, 0, -dir.x).normalize().multiplyScalar(sgn * (3.1 + Math.random() * 1.5));
+            var nrm = new T.Vector3(dir.z, 0, -dir.x).normalize().multiplyScalar(sgn * (3.7 + Math.random() * 2.1));
             var bx = px + nrm.x, bz = pz + nrm.z;
             if (Math.hypot(bx, bz) < 5.2) continue;
             if (used.some(function (u) { return Math.hypot(u.x - bx, u.z - bz) < 2.4; })) continue;
             used.push({ x: bx, z: bz });
-            var w = 1.5 + Math.random() * 1.5, d = 1.5 + Math.random() * 1.5, h = 1.8 + Math.random() * 5.4;
+            var w = 1.5 + Math.random() * 1.5, d = 1.5 + Math.random() * 1.5, h = 1.4 + Math.random() * 3.4;
             Q.bld.push({ sx: w, sy: h, sz: d, x: bx, y: h / 2 + 0.1, z: bz, ry: ang, c: tones[(Math.random() * tones.length) | 0] });
             Q.roof.push({ sx: w * 0.9, sy: 0.05, sz: d * 0.9, x: bx, y: h + 0.12, z: bz, ry: ang, c: 0x0e1518 });
+            var neon = signCols[(Math.random() * signCols.length) | 0];
+            var ex = Math.cos(ang) * (w / 2 - 0.04), ez = -Math.sin(ang) * (w / 2 - 0.04);
+            Q.roof.push({ sx: 0.05, sy: h * 0.86, sz: 0.05, x: bx + ex, y: h * 0.46, z: bz + ez, ry: ang, c: neon });
+            Q.roof.push({ sx: 0.05, sy: h * 0.86, sz: 0.05, x: bx - ex, y: h * 0.46, z: bz - ez, ry: ang, c: neon });
             Q.roof.push({ sx: w * 0.5, sy: 0.16, sz: 0.05, x: bx, y: 1.0 + h * 0.05, z: bz + (sgn > 0 ? -d / 2 - 0.03 : d / 2 + 0.03), ry: ang, c: signCols[(Math.random() * signCols.length) | 0] });
             var rows = Math.max(1, Math.floor(h / 0.95)), cols = Math.max(1, Math.floor(w / 0.66));
             for (var rr = 0; rr < rows; rr++) {
@@ -483,7 +488,15 @@
      ["carWheel", G.wheel, { rough: 0.9 }]
     ].forEach(function (d) {
       var m = instancer(d[1], Q[d[0]], d[2]);
-      if (m) townRoot.add(m);
+      if (m) {
+        townRoot.add(m);
+        if (d[0] === "bld" || d[0] === "roof") {
+          m.material.transparent = true;
+          m.material.opacity = 1;
+          m.material.depthWrite = false;
+          fadeMeshes.push(m);
+        }
+      }
     });
     var lampM = instancer(G.sphere, Q.lamp, { emissive: 0xffc98a, ei: 1.6, rough: 0.4 }, 1);
     if (lampM) { lampM.material = new T.MeshBasicMaterial({ color: 0xffc98a, transparent: true, opacity: 0.95 }); townRoot.add(lampM); }
@@ -750,6 +763,14 @@
     time += dt;
     adapt(dt);
 
+    if (fadeMeshes.length) {
+      var ft = A.zoom < 0.8 ? 0.16 : (A.zoom < 1.15 ? 0.42 : (A.zoom < 1.7 ? 0.75 : 1));
+      for (var fi = 0; fi < fadeMeshes.length; fi++) {
+        var mm = fadeMeshes[fi].material;
+        mm.opacity += (ft - mm.opacity) * Math.min(1, dt * 5);
+        mm.depthWrite = mm.opacity > 0.92;
+      }
+    }
     if (coreGroup && coreGroup.userData.orb) {
       coreGroup.userData.orb.rotation.y += dt * 0.8;
       coreGroup.userData.orb.position.y = 3.55 + Math.sin(time * 1.5) * 0.06;
