@@ -341,6 +341,7 @@
   function shell() {
     css();
     polishCss();
+    scoutCss();
     var host = document.createElement("div");
     host.id = "app";
     host.innerHTML =
@@ -370,7 +371,7 @@
         '<span>CR<b id="h-coins">0</b></span><span class="au">AU<b id="h-aura">0</b></span>' +
         '<span class="cm">CB<b id="h-combo">0</b></span></span>' +
         '<div class="ctrl"><button id="c-zoomout" class="zb">−</button><span id="c-zoompct" class="zp">74%</span><button id="c-zoomin" class="zb">+</button>' +
-        '<button id="c-pause">II</button><button id="c-speed">1x</button>' +
+        '<button id="c-recenter" title="Recenter">&#9678;</button><button id="c-pause">II</button><button id="c-speed">1x</button>' +
         '<button id="c-auto" class="on">AUTO</button></div>' +
       '</div>' +
       '<div id="stage"><svg id="paths"></svg><div id="arena"></div>' +
@@ -910,6 +911,7 @@
       window.NW3D.resize(W, H);
       window.NW3D.buildArena(B.pts);
       window.NW3D.setRings(G.base.seg);
+      ensureScout();
     }
   }
 
@@ -1107,7 +1109,82 @@
     B.enemies.push(enemy);
   }
 
+
+  /* ---------------- scout layer: lane beacons and offscreen enemy arrows ---------------- */
+  function scoutCss() {
+    var st = document.createElement("style");
+    st.textContent = [
+      "#scout{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:6}",
+      "#scout .bc{position:absolute;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;border:2px solid #ff5d6c;background:rgba(255,93,108,.16);box-shadow:0 0 14px rgba(255,93,108,.8);animation:bcp 1.2s ease-in-out infinite}",
+      "#scout .bc:after{content:'';position:absolute;inset:6px;border-radius:50%;background:#ff5d6c}",
+      "#scout .bl{position:absolute;transform:translate(-50%,-190%);font:8px ui-monospace,monospace;letter-spacing:.12em;color:#ffb3bb;white-space:nowrap;text-shadow:0 0 6px #000}",
+      "#scout .ar{position:absolute;transform:translate(-50%,-50%);min-width:30px;height:24px;padding:0 6px;border-radius:12px;background:rgba(255,93,108,.2);border:1px solid #ff5d6c;color:#ffd7db;font:700 10px ui-monospace,monospace;display:flex;align-items:center;justify-content:center;gap:3px;box-shadow:0 0 12px rgba(255,93,108,.55)}",
+      "#scout .ar i{display:inline-block;font-style:normal;font-size:11px}",
+      "#scout .ar.boss{border-color:#ffd24a;color:#ffe9a8;background:rgba(255,210,74,.2);box-shadow:0 0 14px rgba(255,210,74,.7)}",
+      "@keyframes bcp{0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.9}50%{transform:translate(-50%,-50%) scale(1.25);opacity:.55}}",
+      "#c-recenter{opacity:.55}#c-recenter.on{opacity:1;border-color:#ffd24a;color:#ffd24a;box-shadow:0 0 10px rgba(255,210,74,.5)}",
+      "#pan-hint{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);font:8px ui-monospace,monospace;letter-spacing:.14em;color:#8fd6ff;background:rgba(4,10,14,.7);padding:3px 9px;border-radius:999px;pointer-events:none;opacity:0;transition:opacity .5s;z-index:6}",
+      "#pan-hint.on{opacity:.9}"
+    ].join("\n");
+    document.head.appendChild(st);
+  }
+
+  function ensureScout() {
+    var stage = el("stage");
+    if (!stage || el("scout")) return;
+    var d = document.createElement("div"); d.id = "scout"; stage.appendChild(d);
+    var h = document.createElement("div"); h.id = "pan-hint"; h.textContent = "DRAG TO SCOUT LANES";
+    stage.appendChild(h);
+    setTimeout(function () { h.classList.add("on"); }, 800);
+    setTimeout(function () { h.classList.remove("on"); }, 5200);
+  }
+
+  function updateScout() {
+    var layer = el("scout");
+    if (!layer || !V3 || !window.NW3D.project) return;
+    var W = layer.clientWidth, H = layer.clientHeight, pad = 20, html = "";
+    /* lane entrance beacons */
+    (B.pts || []).forEach(function (pts, i) {
+      if (!pts || !pts.length) return;
+      var q = window.NW3D.project(pts[0].x, pts[0].y);
+      if (!q) return;
+      if (q.x > pad && q.x < W - pad && q.y > pad && q.y < H - pad) {
+        html += '<div class="bc" style="left:' + q.x + 'px;top:' + q.y + 'px"></div>' +
+                '<div class="bl" style="left:' + q.x + 'px;top:' + q.y + 'px">LANE ' + (i + 1) + '</div>';
+      } else {
+        var c = clampEdge(q.x, q.y, W, H, pad + 6);
+        html += '<div class="ar" style="left:' + c.x + 'px;top:' + c.y + 'px"><i>' + c.arrow + '</i>L' + (i + 1) + '</div>';
+      }
+    });
+    /* offscreen enemies grouped by screen edge */
+    var groups = {};
+    B.enemies.forEach(function (e) {
+      var q = window.NW3D.project(e.x, e.y);
+      if (!q) return;
+      if (q.x > pad && q.x < W - pad && q.y > pad && q.y < H - pad) return;
+      var c = clampEdge(q.x, q.y, W, H, pad + 6);
+      var key = Math.round(c.x / 46) + ":" + Math.round(c.y / 46);
+      var g = groups[key] || (groups[key] = { x: c.x, y: c.y, n: 0, boss: false, arrow: c.arrow });
+      g.n++; if (e.boss) g.boss = true;
+    });
+    Object.keys(groups).forEach(function (k) {
+      var g = groups[k];
+      html += '<div class="ar' + (g.boss ? " boss" : "") + '" style="left:' + g.x + 'px;top:' + g.y + 'px"><i>' + g.arrow + "</i>" + g.n + "</div>";
+    });
+    layer.innerHTML = html;
+  }
+
+  function clampEdge(x, y, W, H, m) {
+    var cx = W / 2, cy = H / 2, dx = x - cx, dy = y - cy;
+    var k = Math.max(Math.abs(dx) / (cx - m), Math.abs(dy) / (cy - m), 0.0001);
+    var ex = cx + dx / k, ey = cy + dy / k, ar;
+    if (Math.abs(dx) / (cx || 1) > Math.abs(dy) / (cy || 1)) ar = dx > 0 ? "\u25B6" : "\u25C0";
+    else ar = dy > 0 ? "\u25BC" : "\u25B2";
+    return { x: ex, y: ey, arrow: ar };
+  }
+
   function loop(ts) {
+    if (V3) { B.scoutT = (B.scoutT || 0) + dt; if (B.scoutT > 0.12) { B.scoutT = 0; updateScout(); } }
     if (!B.last) B.last = ts;
     var dt = Math.min(0.05, (ts - B.last) / 1000) * B.speed;
     B.last = ts;
@@ -1359,8 +1436,45 @@
       setTimeout(function () { pinching = false; }, 240);
     });
 
+    /* one finger or mouse drag pans the battlefield so you can scout incoming lanes */
+    var dragging = false, dragMoved = false, dragX = 0, dragY = 0, suppressClick = 0;
+    function dragStart(x, y) { dragging = true; dragMoved = false; dragX = x; dragY = y; }
+    function dragMove(x, y) {
+      if (!dragging || !V3 || !window.NW3D.panBy) return;
+      var dx = x - dragX, dy = y - dragY;
+      if (!dragMoved && Math.hypot(dx, dy) < 7) return;
+      dragMoved = true;
+      window.NW3D.panBy(dx, dy);
+      dragX = x; dragY = y;
+      var rc = el("c-recenter"); if (rc) rc.classList.add("on");
+    }
+    function dragEnd() {
+      if (dragging && dragMoved) suppressClick = Date.now();
+      dragging = false;
+    }
+    el("stage").addEventListener("touchstart", function (ev) {
+      if (ev.touches.length === 1) dragStart(ev.touches[0].clientX, ev.touches[0].clientY);
+      else dragging = false;
+    }, { passive: true });
+    el("stage").addEventListener("touchmove", function (ev) {
+      if (pinching || ev.touches.length !== 1) return;
+      dragMove(ev.touches[0].clientX, ev.touches[0].clientY);
+      if (dragMoved) ev.preventDefault();
+    }, { passive: false });
+    el("stage").addEventListener("touchend", dragEnd);
+    el("stage").addEventListener("mousedown", function (ev) { dragStart(ev.clientX, ev.clientY); });
+    window.addEventListener("mousemove", function (ev) { dragMove(ev.clientX, ev.clientY); });
+    window.addEventListener("mouseup", dragEnd);
+    var rcBtn = el("c-recenter");
+    if (rcBtn) rcBtn.onclick = function () {
+      if (window.NW3D.recenter) window.NW3D.recenter();
+      rcBtn.classList.remove("on");
+      toast("CAMERA RECENTERED");
+    };
+
     el("stage").addEventListener("click", function (ev) {
       if (pinching) return;
+      if (Date.now() - suppressClick < 320) return;
       var st = el("stage").getBoundingClientRect();
       var x = ev.clientX - st.left, y = ev.clientY - st.top;
       if (V3 && window.NW3D.pick) {
