@@ -338,6 +338,7 @@
   /* ---------------- shell markup ---------------- */
   function shell() {
     css();
+    polishCss();
     var host = document.createElement("div");
     host.id = "app";
     host.innerHTML =
@@ -364,7 +365,8 @@
       '<div id="b-top">' +
         '<span style="font-size:9px;letter-spacing:.18em;color:#38f5e0" id="b-map">MEGABLOCK CORE</span>' +
         '<span class="hud"><span>W<b id="h-wave">01</b></span><span>H<b id="h-foes">0</b></span>' +
-        '<span>CR<b id="h-coins">0</b></span><span class="au">AU<b id="h-aura">0</b></span></span>' +
+        '<span>CR<b id="h-coins">0</b></span><span class="au">AU<b id="h-aura">0</b></span>' +
+        '<span class="cm">CB<b id="h-combo">0</b></span></span>' +
         '<div class="ctrl"><button id="c-zoomout">−</button><button id="c-zoomin">+</button>' +
         '<button id="c-pause">II</button><button id="c-speed">1x</button>' +
         '<button id="c-auto" class="on">AUTO</button></div>' +
@@ -372,6 +374,13 @@
       '<div id="stage"><svg id="paths"></svg><div id="arena"></div>' +
         '<div id="core"><img src="' + icon("ab-radioactive") + '" alt=""><div class="cb"><i></i></div></div>' +
         '<div id="banner"><b></b><span></span></div>' +
+        '<div id="build"><div class="bp"><div class="bp-h"><span class="tag">BUILD PHASE</span>' +
+          '<b id="bp-wave">WAVE 01 INCOMING</b><button class="chip" id="bp-auto">AUTO ▶</button>' +
+          '<span id="bp-pay"></span></div>' +
+          '<div class="prev" id="bp-prev"></div>' +
+          '<div class="grid" id="bp-grid"></div>' +
+          '<button class="go" id="bp-go">LAUNCH WAVE</button>' +
+        '</div></div>' +
       '</div>' +
       '<div id="b-bar">' +
         '<button id="b-units">DEPLOY<small>units</small></button>' +
@@ -398,6 +407,7 @@
       var e = el("scr-" + k);
       if (e) e.classList.toggle("on", k === scr);
     });
+    if (scr === "battle" && !B.active && !B.over) openBuild(0);
     document.querySelectorAll("#nav button").forEach(function (b) {
       b.classList.toggle("on", b.dataset.go === scr);
     });
@@ -827,7 +837,8 @@
     active: false, spawning: false, units: [], enemies: [], queue: [], spawnTimer: 0,
     mult: 1, armedUnit: null, armedAbility: null, last: 0, cooldowns: {}, kills: 0,
     over: false, paused: false, speed: 1, auto: true, deployT: 0, waveT: 2.0,
-    pts: [], hudT: 0, pushing: false, waveStart: 0, loopOn: false, allies: [], turrets: []
+    pts: [], hudT: 0, pushing: false, waveStart: 0, loopOn: false, allies: [], turrets: [],
+    phase: "build", payLast: 0, combo: 0, comboT: 0, autoWave: false
   };
   var CORE_R = 46;
   var V3 = false;
@@ -1117,6 +1128,8 @@
       if (!B.queue.length) B.spawning = false;
     }
 
+    if (B.comboT > 0) { B.comboT -= dt; if (B.comboT <= 0) B.combo = 0; }
+
     stepTurrets(dt);
 
     /* squad allies hold their own lane */
@@ -1129,7 +1142,7 @@
     if (B.auto) {
       B.deployT -= dt;
       if (B.deployT <= 0) { if (B.units.filter(function (u) { return !u.ally; }).length < agg().cap) autoDeploy(); B.deployT = 1.0; }
-      if (!B.active) { B.waveT -= dt; if (B.waveT <= 0) { startWave(); B.waveT = 2.0; } }
+      if (!B.active && B.autoWave) { B.waveT -= dt; if (B.waveT <= 0) { startWave(); B.waveT = 2.0; } }
       else B.waveT = 2.0;
     }
 
@@ -1137,6 +1150,10 @@
       var e = B.enemies[i];
       if (e.hp <= 0) {
         drop(e.node); B.enemies.splice(i, 1); B.kills++; G.kills = (G.kills || 0) + 1;
+        B.combo += 1; B.comboT = 2.6;
+        var bounty = 3 + Math.min(18, B.combo * 2);
+        G.coins += bounty;
+        floater(e.x, e.y - 12, "+" + bounty);
         var gain = Math.round((9 + e.hpMax / 40 + (e.boss ? 140 : 0)) * map().payout * agg().coin);
         G.coins += gain;
         fxBurst(e.x, e.y, e.boss ? 0xff7b33 : 0xffd24a);
@@ -1201,13 +1218,25 @@
       if (G.wave >= 30) return endRun(true);
       G.wave++; G.best = Math.max(G.best, G.wave);
       save(); hud();
-      if (!B.auto) toast("WAVE CLEAR · +" + bonus + " CR");
+      toast("WAVE CLEAR · +" + bonus + " CR");
+      if (B.autoWave) { B.waveT = 1.6; }
+      else openBuild(bonus);
     }
     B.hudT -= dt;
     if (B.hudT <= 0) { B.hudT = 0.2; hud(); save(); }
   }
 
+  function shakeStage() {
+    var st = el("stage");
+    if (!st) return;
+    st.classList.remove("shake");
+    void st.offsetWidth;
+    st.classList.add("shake");
+    setTimeout(function () { st.classList.remove("shake"); }, 360);
+  }
+
   function hitBase(dmg) {
+    shakeStage();
     var alive = G.base.seg.map(function (v, i) { return v > 0 ? i : -1; }).filter(function (i) { return i >= 0; });
     if (alive.length) {
       var idx = alive[Math.floor(Math.random() * alive.length)];
@@ -1222,6 +1251,7 @@
   }
 
   function endRun(won) {
+    closeBuild();
     B.over = true; B.active = false; B.queue = []; B.spawning = false;
     G.runs++;
     if (won) { G.wave = 1; }
@@ -1365,8 +1395,7 @@
 
     el("launch").onclick = function () {
       if (B.active) return toast("Wave already running");
-      B.auto = false; el("c-auto").classList.remove("on");
-      startWave();
+      launchWave();
     };
     el("c-auto").onclick = function () {
       B.auto = !B.auto;
@@ -1397,6 +1426,168 @@
     };
     window.addEventListener("resize", function () { setTimeout(buildPaths, 80); });
     window.addEventListener("orientationchange", function () { setTimeout(buildPaths, 240); });
+  }
+
+
+  /* ---------------- polish layer ---------------- */
+  function polishCss() {
+    var st = document.createElement("style");
+    st.textContent = [
+      "#b-top{background:linear-gradient(180deg,rgba(9,20,24,.96),rgba(6,13,16,.92));backdrop-filter:blur(8px);box-shadow:0 1px 0 rgba(56,245,224,.18),0 8px 26px rgba(0,0,0,.5)}",
+      "#b-top .hud b{text-shadow:0 0 10px rgba(255,210,74,.55)}",
+      "#b-top .hud .cm b{color:#ff7bd0;text-shadow:0 0 10px rgba(255,123,208,.6)}",
+      "#b-bar button{background:linear-gradient(180deg,rgba(12,26,30,.96),rgba(6,13,16,.96));transition:transform .08s}",
+      "#b-bar button:active{transform:scale(.97)}",
+      "#b-bar #launch{background:linear-gradient(180deg,#1c4a37,#123326);color:#8dffbe;box-shadow:inset 0 0 0 1px rgba(120,255,180,.25)}",
+      "#stage.shake{animation:nwshake .34s ease-in-out}",
+      "@keyframes nwshake{0%,100%{transform:translate(0,0)}15%{transform:translate(-4px,2px)}30%{transform:translate(4px,-2px)}45%{transform:translate(-3px,-2px)}60%{transform:translate(3px,2px)}80%{transform:translate(-1px,1px)}}",
+      "#build{position:absolute;left:0;right:0;bottom:0;z-index:6;display:none;padding:8px 8px 10px;pointer-events:none}",
+      "#build.on{display:block;animation:nwbp .3s ease-out}",
+      "@keyframes nwbp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}",
+      "#build .bp{pointer-events:auto;border:1px solid rgba(56,245,224,.3);border-radius:14px;padding:10px 11px 11px;background:linear-gradient(180deg,rgba(11,26,30,.97),rgba(5,12,15,.98));box-shadow:0 -6px 30px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.06)}",
+      "#build .bp-h{display:flex;align-items:center;gap:7px;margin-bottom:8px}",
+      "#build .tag{font:7.5px ui-monospace,monospace;letter-spacing:.2em;color:#04120f;background:#38f5e0;padding:3px 6px;border-radius:4px;font-weight:700}",
+      "#build .bp-h b{font:10.5px ui-monospace,monospace;letter-spacing:.13em;color:#dff8ff}",
+      "#build #bp-pay{margin-left:auto;font:10px ui-monospace,monospace;color:#ffd24a}",
+      "#build .prev{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}",
+      "#build .chip{font:8px ui-monospace,monospace;letter-spacing:.07em;padding:3px 7px;border-radius:999px;border:1px solid rgba(56,245,224,.3);color:#9fe8e0;background:rgba(56,245,224,.07)}",
+      "#build .chip.warn{border-color:rgba(255,90,90,.55);color:#ffa8a8;background:rgba(255,90,90,.1)}",
+      "#build .grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}",
+      "#build .card{border:1px solid rgba(56,245,224,.22);border-radius:10px;background:rgba(56,245,224,.05);padding:8px;text-align:left;color:#cfeef2;font:inherit;transition:transform .08s}",
+      "#build .card:active{transform:scale(.975)}",
+      "#build .card b{display:block;font:9.5px ui-monospace,monospace;letter-spacing:.09em;color:#8ff7e6;margin-bottom:2px}",
+      "#build .card span{display:block;font:8px ui-monospace,monospace;color:#708f96;line-height:1.35}",
+      "#build .card i{display:block;margin-top:5px;font:9.5px ui-monospace,monospace;font-style:normal;color:#ffd24a}",
+      "#build .card[disabled]{opacity:.38}",
+      "#build .go{width:100%;margin-top:9px;border:0;border-radius:11px;padding:13px;font:11.5px ui-monospace,monospace;letter-spacing:.17em;color:#03110d;background:linear-gradient(180deg,#6cffbd,#23d386);box-shadow:0 8px 26px rgba(35,211,134,.3)}",
+      "#build .go:active{transform:scale(.99)}"
+    ].join("");
+    document.head.appendChild(st);
+  }
+
+  /* ---------------- build phase ---------------- */
+  function buildingByName(n) {
+    return (D.buildings || []).filter(function (x) { return x.name === n; })[0] || null;
+  }
+
+  function nextPreview() {
+    var wave = G.wave;
+    var mult = (1 + (wave - 1) * 0.14) * map().diff;
+    var count = clamp(5 + Math.round(wave * 0.8), 5, 24);
+    return { wave: wave, count: count, mult: mult, boss: wave % 10 === 0 };
+  }
+
+  function veteranPick() {
+    var best = null;
+    D.units.forEach(function (u) {
+      var lv = unitLevel(u.name);
+      if (lv >= 5) return;
+      if (!best || lv < unitLevel(best.name)) best = u;
+    });
+    return best;
+  }
+
+  function buildCards() {
+    var out = [];
+    function add(id, name, desc, cost) {
+      out.push({ id: id, name: name, desc: desc, cost: cost, ok: cost !== null && G.coins >= cost });
+    }
+    var t = buildingByName("Auto-Turret");
+    add("turret", "AUTO-TURRET", "Sentry that fires every 0.9s", t ? buildCost(t) : null);
+    var r = buildingByName("Rail Cannon");
+    add("rail", "RAIL CANNON", "Heavy shot, splash on impact", r ? Math.round(buildCost(r) * 1.9) : null);
+    var b = buildingByName("Blast Barrier");
+    add("barrier", "BLAST BARRIER", "+10% ring segment integrity", b ? Math.round(buildCost(b) * 1.4) : null);
+    add("repair", "FIELD REPAIR", "Restore 25% core and 15% ring", 240);
+    var v = veteranPick();
+    add("veteran", "VETERAN", v ? "Level up " + v.name + " to L" + (unitLevel(v.name) + 1) : "Every unit is maxed",
+        v ? unitUpgradeCost(v.name) : null);
+    return out;
+  }
+
+  function cardHtml(c) {
+    return '<button class="card" data-buy="' + c.id + '"' + (c.ok ? "" : " disabled") + ">" +
+      "<b>" + c.name + "</b><span>" + c.desc + "</span>" +
+      "<i>" + (c.cost === null ? "MAXED" : money(c.cost) + " CR") + "</i></button>";
+  }
+
+  function renderBuild() {
+    if (!el("build")) return;
+    var p = nextPreview();
+    el("bp-wave").textContent = "WAVE " + pad(p.wave) + " INCOMING";
+    el("bp-pay").textContent = (B.payLast ? "+" + money(B.payLast) + " · " : "") + money(G.coins) + " CR";
+    var mx = agg();
+    var chips = '<span class="chip">' + p.count + " HOSTILES</span>" +
+      '<span class="chip">THREAT ' + p.mult.toFixed(2) + "x</span>" +
+      '<span class="chip">' + Math.round(G.base.core / Math.max(1, mx.coreMax) * 100) + "% CORE</span>" +
+      '<span class="chip">' + Math.round(G.base.seg.reduce(function (a, b) { return a + b; }, 0) /
+        Math.max(1, mx.segMax * 6) * 100) + "% RING</span>";
+    if (p.boss) chips += '<span class="chip warn">BOSS WAVE</span>';
+    el("bp-prev").innerHTML = chips;
+    el("bp-grid").innerHTML = buildCards().map(cardHtml).join("");
+    el("bp-grid").querySelectorAll("[data-buy]").forEach(function (n) {
+      n.onclick = function () { buy(n.getAttribute("data-buy")); };
+    });
+    var ab = el("bp-auto");
+    if (ab) {
+      ab.textContent = B.autoWave ? "AUTO ON" : "AUTO ▶";
+      ab.className = "chip" + (B.autoWave ? " on" : "");
+      ab.onclick = function () {
+        B.autoWave = !B.autoWave;
+        if (B.autoWave) { launchWave(); }
+        else renderBuild();
+      };
+    }
+    el("bp-go").textContent = "LAUNCH WAVE " + pad(p.wave);
+    el("bp-go").onclick = function () { launchWave(); };
+  }
+
+  function openBuild(pay) {
+    B.phase = "build";
+    B.payLast = pay || 0;
+    renderBuild();
+    var b = el("build");
+    if (b) b.classList.add("on");
+  }
+
+  function closeBuild() {
+    var b = el("build");
+    if (b) b.classList.remove("on");
+    B.phase = "wave";
+  }
+
+  function launchWave() {
+    if (B.active || B.over) return;
+    closeBuild();
+    B.auto = false;
+    var ca = el("c-auto");
+    if (ca) ca.classList.remove("on");
+    startWave();
+  }
+
+  function buy(id) {
+    var cards = buildCards();
+    var c = cards.filter(function (x) { return x.id === id; })[0];
+    if (!c || c.cost === null) return toast("Already maxed");
+    if (G.coins < c.cost) return toast("Need " + money(c.cost) + " CR");
+    G.coins -= c.cost;
+    if (id === "repair") {
+      var mx = agg();
+      G.base.core = Math.min(mx.coreMax, G.base.core + mx.coreMax * 0.25);
+      G.base.seg = G.base.seg.map(function (v) { return Math.min(mx.segMax, v + mx.segMax * 0.15); });
+    } else if (id === "veteran") {
+      var u = veteranPick();
+      if (u) G.unitLevels[u.name] = unitLevel(u.name) + 1;
+    } else {
+      var nm = { turret: "Auto-Turret", rail: "Rail Cannon", barrier: "Blast Barrier" }[id];
+      var bd = buildingByName(nm);
+      if (bd) {
+        G.builds[bd.building_id] = buildLevel(bd.building_id) + 1;
+        if (id === "turret" || id === "rail") buildTurrets();
+      }
+    }
+    save(); hud(); renderBuild();
+    toast(c.name + " ONLINE");
   }
 
   function setupAllies() {
