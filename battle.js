@@ -1475,12 +1475,14 @@
       "#build .chip{font:8px ui-monospace,monospace;letter-spacing:.07em;padding:3px 7px;border-radius:999px;border:1px solid rgba(56,245,224,.3);color:#9fe8e0;background:rgba(56,245,224,.07)}",
       "#build .chip.warn{border-color:rgba(255,90,90,.55);color:#ffa8a8;background:rgba(255,90,90,.1)}",
       "#build .grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}",
-      "#build .card{border:1px solid rgba(56,245,224,.22);border-radius:10px;background:rgba(56,245,224,.05);padding:8px;text-align:left;color:#cfeef2;font:inherit;transition:transform .08s}",
+      "#build .card{position:relative;border:1px solid color-mix(in srgb,var(--ac) 45%,transparent);border-left:3px solid var(--ac);border-radius:11px;background:linear-gradient(150deg,color-mix(in srgb,var(--ac) 14%,transparent),rgba(6,14,17,.72));padding:8px 9px;text-align:left;color:#cfeef2;font:inherit;overflow:hidden;transition:transform .08s}",
       "#build .card:active{transform:scale(.975)}",
-      "#build .card b{display:block;font:9.5px ui-monospace,monospace;letter-spacing:.09em;color:#8ff7e6;margin-bottom:2px}",
-      "#build .card span{display:block;font:8px ui-monospace,monospace;color:#708f96;line-height:1.35}",
-      "#build .card i{display:block;margin-top:5px;font:9.5px ui-monospace,monospace;font-style:normal;color:#ffd24a}",
-      "#build .card[disabled]{opacity:.38}",
+      "#build .card .cr{display:flex;align-items:center;gap:6px;margin-bottom:3px}",
+      "#build .card .ci{width:20px;height:20px;object-fit:contain;filter:drop-shadow(0 0 5px var(--ac));opacity:.95;flex:0 0 auto}",
+      "#build .card b{display:block;font:9.5px ui-monospace,monospace;letter-spacing:.08em;color:#eafcff}",
+      "#build .card span{display:block;font:8px ui-monospace,monospace;color:#7e9aa1;line-height:1.35}",
+      "#build .card .cp{display:inline-block;margin-top:6px;font:9.5px ui-monospace,monospace;font-style:normal;color:#03110d;background:var(--ac);padding:2px 7px;border-radius:999px;font-weight:700}",
+      "#build .card[disabled]{opacity:.4;filter:grayscale(.55)}",
       "#build .go{width:100%;margin-top:9px;border:0;border-radius:11px;padding:13px;font:11.5px ui-monospace,monospace;letter-spacing:.17em;color:#03110d;background:linear-gradient(180deg,#6cffbd,#23d386);box-shadow:0 8px 26px rgba(35,211,134,.3)}",
       "#build .go:active{transform:scale(.99)}"
     ].join("");
@@ -1511,26 +1513,29 @@
 
   function buildCards() {
     var out = [];
-    function add(id, name, desc, cost) {
-      out.push({ id: id, name: name, desc: desc, cost: cost, ok: cost !== null && G.coins >= cost });
+    function add(id, name, desc, cost, ico, col) {
+      out.push({ id: id, name: name, desc: desc, cost: cost, ico: ico, col: col, ok: cost !== null && G.coins >= cost });
     }
     var t = buildingByName("Auto-Turret");
-    add("turret", "AUTO-TURRET", "Sentry that fires every 0.9s", t ? buildCost(t) : null);
+    add("turret", "AUTO-TURRET", "Sentry that fires every 0.9s", t ? buildCost(t) : null, "ab-turret", "#38f5e0");
     var r = buildingByName("Rail Cannon");
-    add("rail", "RAIL CANNON", "Heavy shot, splash on impact", r ? Math.round(buildCost(r) * 1.9) : null);
+    add("rail", "RAIL CANNON", "Heavy shot, splash on impact", r ? Math.round(buildCost(r) * 1.9) : null, "ab-cannon", "#ff7b33");
     var b = buildingByName("Blast Barrier");
-    add("barrier", "BLAST BARRIER", "+10% ring segment integrity", b ? Math.round(buildCost(b) * 1.4) : null);
-    add("repair", "FIELD REPAIR", "Restore 25% core and 15% ring", 240);
+    add("barrier", "BLAST BARRIER", "+10% ring segment integrity", b ? Math.round(buildCost(b) * 1.4) : null, "ab-shield", "#8fd6ff");
+    add("repair", "FIELD REPAIR", "Restore 25% core and 15% ring", 240, "ab-heal", "#7dffb0");
     var v = veteranPick();
     add("veteran", "VETERAN", v ? "Level up " + v.name + " to L" + (unitLevel(v.name) + 1) : "Every unit is maxed",
-        v ? unitUpgradeCost(v.name) : null);
+        v ? unitUpgradeCost(v.name) : null, "ab-upgrade", "#ffd24a");
     return out;
   }
 
   function cardHtml(c) {
-    return '<button class="card" data-buy="' + c.id + '"' + (c.ok ? "" : " disabled") + ">" +
-      "<b>" + c.name + "</b><span>" + c.desc + "</span>" +
-      "<i>" + (c.cost === null ? "MAXED" : money(c.cost) + " CR") + "</i></button>";
+    var art = c.ico ? '<img class="ci" src="' + icon(c.ico) + '" alt="">' : "";
+    return '<button class="card" data-buy="' + c.id + '" style="--ac:' + (c.col || "#38f5e0") + '"' +
+      (c.ok ? "" : " disabled") + ">" +
+      '<div class="cr">' + art + "<b>" + c.name + "</b></div>" +
+      "<span>" + c.desc + "</span>" +
+      '<i class="cp">' + (c.cost === null ? "MAXED" : money(c.cost) + " CR") + "</i></button>";
   }
 
   function renderBuild() {
