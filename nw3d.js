@@ -25,14 +25,17 @@
 
   function geoms() {
     G.box = new T.BoxGeometry(1, 1, 1);
-    G.cyl = new T.CylinderGeometry(0.5, 0.5, 1, 12);
+    G.cyl = new T.CylinderGeometry(0.5, 0.5, 1, 20);
     G.cone = new T.ConeGeometry(0.5, 1, 10);
-    G.sphere = new T.SphereGeometry(0.5, 12, 10);
+    G.sphere = new T.SphereGeometry(0.5, 20, 16);
     G.ico = new T.IcosahedronGeometry(0.5, 1);
     G.octa = new T.OctahedronGeometry(0.5, 0);
     G.torus = new T.TorusGeometry(0.5, 0.08, 8, 20);
     G.plane = new T.PlaneGeometry(1, 1);
-    G.cap = new T.CapsuleGeometry(0.5, 0.6, 4, 8);
+    G.cap = new T.CapsuleGeometry(0.5, 0.6, 8, 16);
+    G.cap2 = new T.CapsuleGeometry(0.5, 0.9, 8, 16);
+    G.torus2 = new T.TorusGeometry(0.5, 0.05, 10, 40);
+    G.octa2 = new T.OctahedronGeometry(0.5, 1);
     G.wheel = new T.CylinderGeometry(0.5, 0.5, 0.24, 10);
   }
   function mat(color, em, inten) {
@@ -67,7 +70,11 @@
     renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setSize(w, h, false);
-    renderer.shadowMap.enabled = false;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = T.PCFSoftShadowMap;
+    renderer.toneMapping = T.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+    if (renderer.outputEncoding !== undefined) renderer.outputEncoding = T.sRGBEncoding;
 
     scene = new T.Scene();
     scene.background = new T.Color(0x070d11);
@@ -75,14 +82,30 @@
 
     camera = new T.PerspectiveCamera(46, w / h, 0.1, 400);
 
-    var hemi = new T.HemisphereLight(0x3d7d8c, 0x0a1014, 1.15);
+    var hemi = new T.HemisphereLight(0x5fa8c8, 0x14181f, 1.35);
     scene.add(hemi);
-    var moon = new T.DirectionalLight(0xc9ecff, 0.85);
-    moon.position.set(-14, 22, 12);
+    var moon = new T.DirectionalLight(0xd6f0ff, 1.5);
+    moon.position.set(-16, 26, 14);
+    moon.castShadow = true;
+    moon.shadow.mapSize.width = 1024;
+    moon.shadow.mapSize.height = 1024;
+    moon.shadow.camera.near = 1;
+    moon.shadow.camera.far = 90;
+    moon.shadow.camera.left = -22;
+    moon.shadow.camera.right = 22;
+    moon.shadow.camera.top = 22;
+    moon.shadow.camera.bottom = -22;
+    moon.shadow.bias = -0.0008;
     scene.add(moon);
-    var warm = new T.DirectionalLight(0xffa04d, 0.35);
-    warm.position.set(12, 10, -14);
+    var warm = new T.DirectionalLight(0xff8a3d, 0.75);
+    warm.position.set(16, 9, -16);
     scene.add(warm);
+    var rimCyan = new T.DirectionalLight(0x38f5e0, 0.55);
+    rimCyan.position.set(0, 6, 20);
+    scene.add(rimCyan);
+    var rimPink = new T.DirectionalLight(0xff3d8b, 0.4);
+    rimPink.position.set(-18, 5, -12);
+    scene.add(rimPink);
     coreLight = new T.PointLight(0xff9a4d, 2.6, 40, 2);
     coreLight.position.set(0, 3.2, 0);
     scene.add(coreLight);
@@ -96,13 +119,13 @@
 
   function position() {
     var span = A.W / A.PPU;
-    var dist = Math.max(9.5, span * 0.78) / (A.zoom || 1);
-    camera.position.set(0, dist * 1.16, dist * 0.42);
-    camera.lookAt(0, 0.2, 0);
+    var dist = Math.max(7.4, span * 0.62) / (A.zoom || 1);
+    camera.position.set(0, dist * 0.94, dist * 0.62);
+    camera.lookAt(0, 0.6, 0);
     camera.aspect = A.W / A.H;
     camera.updateProjectionMatrix();
   }
-  A.setZoom = function (z) { A.zoom = Math.min(2.2, Math.max(0.5, z)); if (A.ok) position(); return A.zoom; };
+  A.setZoom = function (z) { A.zoom = Math.min(3.0, Math.max(0.55, z)); if (A.ok) position(); return A.zoom; };
   A.getZoom = function () { return A.zoom; };
   A.resize = function (w, h) { if (!A.ok) return; A.W = w; A.H = h; renderer.setSize(w, h, false); position(); };
   A.toWorld = function (px, py) { return { x: (px - A.W / 2) / A.PPU, z: (py - A.H / 2) / A.PPU }; };
@@ -124,6 +147,11 @@
   };
 
   /* ================= humanoid / mech models ================= */
+  function shadows(root) {
+    root.traverse(function (n) { if (n.isMesh) { n.castShadow = true; n.receiveShadow = false; } });
+    return root;
+  }
+
   function humanoid(opt) {
     var g = new T.Group();
     var skin = opt.skin || SKIN;
@@ -135,12 +163,19 @@
     var torso = put(g, G.cap, mat(suit, 0x0a1216, 0.06), heavy ? 0.36 : 0.31, 0.3, 0.24, 0, 0.86, 0);
     var chest = put(g, G.box, mat(opt.armor || 0x243740, accent, 0.22), heavy ? 0.34 : 0.28, 0.22, 0.11, 0, 0.92, -0.06);
     var lum = put(g, G.box, mat(accent, accent, 1.5), 0.07, 0.05, 0.02, 0, 0.95, -0.13);
+    put(g, G.box, mat(0x151f24, accent, 0.5), 0.26, 0.05, 0.06, 0, 0.86, -0.12);
+    put(g, G.box, mat(0x151f24, accent, 0.5), 0.06, 0.2, 0.05, 0.09, 0.88, -0.12);
+    put(g, G.box, mat(0x151f24, accent, 0.5), 0.06, 0.2, 0.05, -0.09, 0.88, -0.12);
 
     var neck = put(g, G.cyl, mat(skin, 0x000000, 0), 0.09, 0.08, 0.09, 0, 1.08, 0);
     var head = put(g, G.sphere, mat(skin, 0x000000, 0), 0.19, 0.21, 0.19, 0, 1.21, 0);
     var helmet = put(g, G.sphere, mat(opt.helmet || 0x2b3d45, 0x0c1518, 0.08), 0.21, 0.15, 0.21, 0, 1.27, 0);
     var brim = put(g, G.cyl, mat(opt.helmet || 0x2b3d45, 0x0c1518, 0.08), 0.215, 0.035, 0.215, 0, 1.235, -0.01);
     var visor = put(g, G.box, mat(accent, accent, 1.8), 0.16, 0.055, 0.03, 0, 1.19, 0.16);
+    /* face plate and jaw so the head is not a bare ball */
+    put(g, G.box, mat(opt.armor || 0x243740, accent, 0.16), 0.15, 0.1, 0.06, 0, 1.14, 0.15);
+    put(g, G.sphere, mat(skin, 0x000000, 0), 0.06, 0.05, 0.05, 0, 1.115, 0.19);
+    put(g, G.cyl, mat(0x1b262b, accent, 0.8), 0.02, 0.12, 0.02, 0.115, 1.22, 0.1);
     if (opt.antenna) {
       put(g, G.cyl, mat(0x1b262b, 0x0a1216, 0.05), 0.015, 0.26, 0.015, 0.13, 1.4, -0.02);
       put(g, G.sphere, mat(accent, accent, 1.8), 0.045, 0.045, 0.045, 0.13, 1.55, -0.02);
@@ -155,6 +190,10 @@
       var fore = put(grp, G.cap, mat(opt.armor || 0x243740, accent, 0.18), 0.095, 0.15, 0.095, 0, -0.46, 0.02);
       var hand = put(grp, G.sphere, mat(skin, 0x000000, 0), 0.085, 0.09, 0.085, 0, -0.62, 0.03);
       if (heavy) put(grp, G.sphere, mat(opt.armor || 0x243740, accent, 0.25), 0.16, 0.12, 0.16, 0, -0.03, 0);
+      /* shoulder pad + forearm guard so the arm reads as armour, not a tube */
+      put(grp, G.sphere, mat(opt.armor || 0x243740, accent, 0.3), 0.15, 0.1, 0.15, 0, -0.02, 0);
+      put(grp, G.box, mat(0x1a242a, accent, 0.45), 0.12, 0.14, 0.1, 0, -0.46, 0.02);
+      put(grp, G.box, mat(accent, accent, 1.3), 0.03, 0.1, 0.02, sgn * 0.055, -0.46, 0.075);
       g.add(grp);
       arms.push(grp);
     });
@@ -176,6 +215,10 @@
       put(grp, G.sphere, mat(0x18242a, accent, 0.4), 0.105, 0.105, 0.105, 0, -0.34, 0);
       put(grp, G.cap, mat(suit, 0x0a1216, 0.06), 0.1, 0.16, 0.1, 0, -0.5, 0);
       put(grp, G.box, mat(0x151e22, 0x000000, 0), 0.14, 0.09, 0.24, 0, -0.66, 0.04);
+      /* thigh plate + knee guard + boot cuff */
+      put(grp, G.box, mat(opt.armor || 0x243740, accent, 0.2), 0.13, 0.16, 0.12, 0, -0.2, 0.03);
+      put(grp, G.sphere, mat(0x1a242a, accent, 0.5), 0.085, 0.07, 0.085, 0, -0.34, 0.05);
+      put(grp, G.cyl, mat(0x151e22, accent, 0.3), 0.115, 0.05, 0.115, 0, -0.59, 0.02);
       g.add(grp);
       legs.push(grp);
     });
@@ -294,30 +337,44 @@
     scene.add(townRoot);
     var Q = { bld: [], roof: [], kerb: [], walk: [], pole: [], lamp: [], planter: [], trunk: [], leaf: [], win: [], carBody: [], carTop: [], carGlass: [], carLamp: [], carWheel: [], walkLine: [] };
 
-    var ground = new T.Mesh(new T.PlaneGeometry(90, 90), new T.MeshStandardMaterial({ color: 0x14181b, metalness: 0.1, roughness: 0.95 }));
+    var ground = new T.Mesh(new T.PlaneGeometry(90, 90), new T.MeshStandardMaterial({ color: 0x1a2028, metalness: 0.18, roughness: 0.9 }));
     ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
     townRoot.add(ground);
+    /* district colour washes so the board is not one flat tone */
+    var washes = [[0x38f5e0, -6.5, 4.2], [0xff3d8b, 7.2, 3.4], [0xffb457, 3.4, -6.6], [0x7dffb0, -4.8, -5.8]];
+    washes.forEach(function (wsh) {
+      var patch = new T.Mesh(new T.CircleGeometry(3.6, 26),
+        new T.MeshBasicMaterial({ color: wsh[0], transparent: true, opacity: 0.07 }));
+      patch.rotation.x = -Math.PI / 2;
+      patch.position.set(wsh[1], 0.02, wsh[2]);
+      townRoot.add(patch);
+    });
 
-    var plaza = new T.Mesh(new T.CylinderGeometry(4.6, 4.8, 0.1, 26), new T.MeshStandardMaterial({ color: 0x1b2226, metalness: 0.15, roughness: 0.9 }));
+    var plaza = new T.Mesh(new T.CylinderGeometry(4.6, 4.8, 0.1, 40), new T.MeshStandardMaterial({ color: 0x2a3238, metalness: 0.4, roughness: 0.55 }));
     plaza.position.y = 0.05;
+    plaza.receiveShadow = true;
     townRoot.add(plaza);
+    var ringCols = [0x38f5e0, 0xffb457, 0xff3d8b];
     for (var r = 0; r < 3; r++) {
-      var rv = new T.Mesh(new T.RingGeometry(1.4 + r * 1.15, 1.5 + r * 1.15, 28),
-        new T.MeshBasicMaterial({ color: 0x38f5e0, transparent: true, opacity: 0.2 }));
+      var rv = new T.Mesh(new T.RingGeometry(1.4 + r * 1.15, 1.5 + r * 1.15, 48),
+        new T.MeshBasicMaterial({ color: ringCols[r], transparent: true, opacity: 0.26 }));
       rv.rotation.x = -Math.PI / 2; rv.position.y = 0.11; townRoot.add(rv);
     }
 
     var curvePts = [];
-    paths.forEach(function (pts) {
+    var LANE_ROAD = [0x2b3238, 0x322b3a, 0x263239, 0x38322b];
+    var LANE_LINE = [0x38f5e0, 0xff3d8b, 0xffb457, 0x7dffb0];
+    paths.forEach(function (pts, laneNo) {
       var v3 = pts.map(function (p) { var w = A.toWorld(p.x, p.y); return new T.Vector3(w.x, 0, w.z); });
       if (v3.length < 2) return;
       curvePts.push(v3);
       var curve = new T.CatmullRomCurve3(v3);
-      var road = new T.Mesh(new T.TubeGeometry(curve, 40, 0.78, 8, false),
-        new T.MeshStandardMaterial({ color: 0x22282c, metalness: 0.05, roughness: 0.98 }));
+      var road = new T.Mesh(new T.TubeGeometry(curve, 60, 0.78, 12, false),
+        new T.MeshStandardMaterial({ color: LANE_ROAD[laneNo % 4], metalness: 0.25, roughness: 0.8 }));
       road.scale.y = 0.1; road.position.y = 0.08; townRoot.add(road);
       var laneGeo = new T.BufferGeometry().setFromPoints(v3.map(function (v) { return new T.Vector3(v.x, 0.14, v.z); }));
-      townRoot.add(new T.Line(laneGeo, new T.LineBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.45 })));
+      townRoot.add(new T.Line(laneGeo, new T.LineBasicMaterial({ color: LANE_LINE[laneNo % 4], transparent: true, opacity: 0.6 })));
 
       for (var i = 1; i < v3.length - 1; i++) {
         var a = v3[i], b = v3[i + 1];
@@ -441,21 +498,82 @@
 
     /* central tower */
     coreGroup = new T.Group();
-    put(coreGroup, G.cyl, mat(0x2a3438, 0x0b1114, 0.06), 3.0, 0.24, 3.0, 0, 0.12, 0);
-    put(coreGroup, G.cyl, mat(0x1f2a2f, 0x0b1114, 0.05), 1.5, 0.9, 1.5, 0, 0.5, 0);
-    put(coreGroup, G.cyl, mat(0x243036, 0x0b1114, 0.05), 1.05, 1.5, 1.05, 0, 1.6, 0);
-    for (var f = 0; f < 4; f++) {
-      var fa = (f / 4) * Math.PI * 2;
-      put(coreGroup, G.box, mat(0x2f3c42, 0x38f5e0, 0.5), 0.1, 2.2, 0.34, Math.cos(fa) * 1.06, 1.8, Math.sin(fa) * 1.06, 0, -fa, 0);
+
+    /* ---- objective base: layered octagonal platform, not a stack of drums ---- */
+    var baseGeo = new T.CylinderGeometry(3.15, 3.35, 0.26, 8);
+    var base = new T.Mesh(baseGeo, mat(0x2b343b, 0x0b1114, 0.05));
+    base.position.y = 0.13; base.receiveShadow = true; base.castShadow = true;
+    coreGroup.add(base);
+    var trim = new T.Mesh(new T.TorusGeometry(3.12, 0.045, 8, 8), mat(0x38f5e0, 0x38f5e0, 1.4));
+    trim.rotation.x = Math.PI / 2; trim.rotation.z = Math.PI / 8; trim.position.y = 0.27;
+    coreGroup.add(trim);
+
+    /* eight buttresses with lit edges */
+    for (var bf = 0; bf < 8; bf++) {
+      var ba = (bf / 8) * Math.PI * 2 + Math.PI / 8;
+      var bx = Math.cos(ba) * 2.55, bz = Math.sin(ba) * 2.55;
+      put(coreGroup, G.box, mat(0x333d45, 0x0d171b, 0.08), 0.62, 0.5, 0.9, bx, 0.5, bz, 0, -ba, 0);
+      put(coreGroup, G.box, mat(0x38f5e0, 0x38f5e0, 1.5), 0.66, 0.045, 0.06, bx, 0.74, bz, 0, -ba, 0);
+      put(coreGroup, G.cyl, mat(0x1d262c, 0x0b1114, 0.05), 0.16, 0.62, 0.16, bx * 1.06, 0.6, bz * 1.06);
     }
-    coreGroup.userData.ring = put(coreGroup, G.torus, mat(0x8fd6ff, 0x8fd6ff, 0.9), 1.5, 1.5, 1.5, 0, 3.1, 0, Math.PI / 2.2);
-    var orb = new T.Mesh(new T.IcosahedronGeometry(0.52, 1), new T.MeshStandardMaterial({
-      color: 0xffb457, emissive: 0xffb457, emissiveIntensity: 1.8, metalness: 0.2, roughness: 0.3
+
+    /* stepped tiers with coloured trim */
+    var tier = [[2.05, 0.34, 0.42, 0x39444d], [1.55, 0.3, 0.86, 0x333d45], [1.05, 0.26, 1.2, 0x2c353c]];
+    tier.forEach(function (t, ti) {
+      var m = new T.Mesh(new T.CylinderGeometry(t[0], t[0] * 1.06, t[1], 24), mat(t[3], 0x0b1114, 0.05));
+      m.position.y = t[2]; m.castShadow = true; m.receiveShadow = true;
+      coreGroup.add(m);
+      var tg = new T.Mesh(new T.TorusGeometry(t[0] * 0.99, 0.028, 6, 36), mat([0xffb457, 0x38f5e0, 0x8fd6ff][ti], [0xffb457, 0x38f5e0, 0x8fd6ff][ti], 1.5));
+      tg.rotation.x = Math.PI / 2; tg.position.y = t[2] + t[1] * 0.5;
+      coreGroup.add(tg);
+    });
+
+    /* energy pylons ringing the top tier */
+    for (var pf = 0; pf < 6; pf++) {
+      var pa = (pf / 6) * Math.PI * 2;
+      var px2 = Math.cos(pa) * 1.28, pz2 = Math.sin(pa) * 1.28;
+      put(coreGroup, G.cyl, mat(0x2f3941, 0x0b1114, 0.06), 0.1, 0.95, 0.1, px2, 1.75, pz2);
+      put(coreGroup, G.sphere, mat(0xffb457, 0xffb457, 2.0), 0.11, 0.11, 0.11, px2, 2.26, pz2);
+    }
+
+    /* central column with glowing veins */
+    put(coreGroup, G.cyl, mat(0x333d45, 0x0b1114, 0.06), 0.62, 1.9, 0.62, 0, 2.35, 0);
+    for (var vf = 0; vf < 4; vf++) {
+      var va = (vf / 4) * Math.PI * 2;
+      put(coreGroup, G.box, mat(0x38f5e0, 0x38f5e0, 1.6), 0.05, 1.55, 0.03, Math.cos(va) * 0.32, 2.35, Math.sin(va) * 0.32, 0, -va, 0);
+    }
+
+    /* the objective: layered energy orb with a spinning cage */
+    var orbGlow = new T.Mesh(new T.SphereGeometry(0.78, 24, 18),
+      new T.MeshBasicMaterial({ color: 0xffb457, transparent: true, opacity: 0.16 }));
+    orbGlow.position.y = 3.55;
+    coreGroup.add(orbGlow);
+    var orb = new T.Mesh(new T.IcosahedronGeometry(0.5, 1), new T.MeshStandardMaterial({
+      color: 0xffc46b, emissive: 0xffb457, emissiveIntensity: 2.4, metalness: 0.35, roughness: 0.22
     }));
-    orb.position.y = 3.35;
+    orb.position.y = 3.55;
     coreGroup.add(orb);
     coreGroup.userData.orb = orb;
-    put(coreGroup, G.cyl, mat(0x243036, 0x0b1114, 0.05), 0.12, 1.4, 0.12, 0, 2.9, 0);
+    coreGroup.userData.orbGlow = orbGlow;
+    var cage = new T.Mesh(new T.IcosahedronGeometry(0.68, 0), new T.MeshBasicMaterial({ color: 0xffd9a0, wireframe: true, transparent: true, opacity: 0.5 }));
+    cage.position.y = 3.55;
+    coreGroup.add(cage);
+    coreGroup.userData.cage = cage;
+
+    coreGroup.userData.ring = put(coreGroup, G.torus, mat(0x8fd6ff, 0x8fd6ff, 1.2), 1.7, 1.7, 1.7, 0, 3.55, 0, Math.PI / 2.15);
+    var halo = new T.Mesh(new T.TorusGeometry(1.15, 0.03, 8, 48), mat(0xff3d8b, 0xff3d8b, 1.6));
+    halo.rotation.x = Math.PI / 2.6;
+    halo.position.y = 3.55;
+    coreGroup.add(halo);
+    coreGroup.userData.halo = halo;
+
+    /* shield dome */
+    var dome = new T.Mesh(new T.SphereGeometry(4.1, 26, 18, 0, Math.PI * 2, 0, Math.PI / 2),
+      new T.MeshBasicMaterial({ color: 0x38f5e0, transparent: true, opacity: 0.05, side: T.DoubleSide }));
+    dome.position.y = 0.1;
+    coreGroup.add(dome);
+    coreGroup.userData.dome = dome;
+
     townRoot.add(coreGroup);
   }
 
@@ -500,6 +618,7 @@
       ? robot({ shell: 0x2b3f49, accent: accent })
       : humanoid({ suit: o.ally ? 0x2a2140 : 0x22303a, armor: 0x2b3d45, accent: accent, helmet: 0x2b3d45, heavy: cls === "Cyberpsycho" });
     m.position.set(w.x, 0.02, w.z);
+    shadows(m);
     scene.add(m);
     return m;
   };
@@ -633,8 +752,27 @@
 
     if (coreGroup && coreGroup.userData.orb) {
       coreGroup.userData.orb.rotation.y += dt * 0.8;
-      coreGroup.userData.orb.position.y = 3.35 + Math.sin(time * 1.5) * 0.05;
-      if (coreGroup.userData.ring) coreGroup.userData.ring.rotation.z += dt * 0.7;
+      coreGroup.userData.orb.position.y = 3.55 + Math.sin(time * 1.5) * 0.06;
+      if (coreGroup.userData.orbGlow) {
+        coreGroup.userData.orbGlow.position.y = coreGroup.userData.orb.position.y;
+        coreGroup.userData.orbGlow.scale.setScalar(1 + Math.sin(time * 2.1) * 0.06);
+      }
+      if (coreGroup.userData.cage) {
+        coreGroup.userData.cage.position.y = coreGroup.userData.orb.position.y;
+        coreGroup.userData.cage.rotation.y -= dt * 0.45;
+        coreGroup.userData.cage.rotation.x += dt * 0.2;
+      }
+      if (coreGroup.userData.halo) {
+        coreGroup.userData.halo.position.y = coreGroup.userData.orb.position.y;
+        coreGroup.userData.halo.rotation.z += dt * 0.9;
+      }
+      if (coreGroup.userData.dome) {
+        coreGroup.userData.dome.material.opacity = 0.04 + Math.sin(time * 1.3) * 0.015;
+      }
+      if (coreGroup.userData.ring) {
+        coreGroup.userData.ring.rotation.z += dt * 0.7;
+        coreGroup.userData.ring.position.y = coreGroup.userData.orb.position.y;
+      }
     }
     if (coreLight) coreLight.intensity = 2.3 + Math.sin(time * 3) * 0.4;
 
