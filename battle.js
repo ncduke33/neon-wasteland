@@ -226,6 +226,8 @@
       "#b-bar button{background:#070e11;border:0;color:#8fd6ff;font:10px ui-monospace,monospace;letter-spacing:.1em;padding:13px 2px}",
       "#b-bar button small{display:block;font-size:8px;color:#4d6a70;margin-top:3px}",
       "#b-bar #launch{background:#13261f;color:#7dffb0}",
+      "#b-bar .ctrl .zb{min-width:34px;font-size:15px;font-weight:700;color:#8ff7e6}",
+      "#b-bar .ctrl .zp{font-size:8px;letter-spacing:.06em;color:#63838a;min-width:26px;text-align:center}",
       "/* sheets */",
       "#sheet{position:fixed;left:0;right:0;bottom:0;max-height:74vh;padding-bottom:env(safe-area-inset-bottom);background:#060d10;border-top:1px solid #38f5e0;",
       "transform:translateY(103%);transition:transform .2s ease;z-index:80;display:flex;flex-direction:column}",
@@ -367,7 +369,7 @@
         '<span class="hud"><span>W<b id="h-wave">01</b></span><span>H<b id="h-foes">0</b></span>' +
         '<span>CR<b id="h-coins">0</b></span><span class="au">AU<b id="h-aura">0</b></span>' +
         '<span class="cm">CB<b id="h-combo">0</b></span></span>' +
-        '<div class="ctrl"><button id="c-zoomout">−</button><button id="c-zoomin">+</button>' +
+        '<div class="ctrl"><button id="c-zoomout" class="zb">−</button><span id="c-zoompct" class="zp">74%</span><button id="c-zoomin" class="zb">+</button>' +
         '<button id="c-pause">II</button><button id="c-speed">1x</button>' +
         '<button id="c-auto" class="on">AUTO</button></div>' +
       '</div>' +
@@ -1305,8 +1307,28 @@
       if (!V3 || !window.NW3D.setZoom) return;
       window.NW3D.setZoom(window.NW3D.getZoom() * f);
       var pct = Math.round(window.NW3D.getZoom() * 100);
+      var ro = el("c-zoompct");
+      if (ro) ro.textContent = pct + "%";
       toast("ZOOM " + pct + "%");
     }
+    function setZoomTo(z) {
+      if (!V3 || !window.NW3D.setZoom) return;
+      window.NW3D.setZoom(z);
+      var ro = el("c-zoompct");
+      if (ro) ro.textContent = Math.round(window.NW3D.getZoom() * 100) + "%";
+    }
+    /* double tap the battlefield to punch in and back out */
+    var lastTap = 0;
+    el("stage").addEventListener("touchend", function (ev) {
+      if (!V3 || ev.touches.length) return;
+      var now = Date.now();
+      if (now - lastTap < 320) {
+        setZoomTo(window.NW3D.getZoom() > 1.4 ? 0.74 : 2.1);
+        lastTap = 0;
+        return;
+      }
+      lastTap = now;
+    });
     el("c-zoomin").onclick = function () { zoomBy(1.22); };
     el("c-zoomout").onclick = function () { zoomBy(1 / 1.22); };
     el("stage").addEventListener("wheel", function (ev) {
