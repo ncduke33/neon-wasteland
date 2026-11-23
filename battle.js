@@ -456,7 +456,8 @@
       '<div class="card" style="margin-top:12px"><h2>OPERATOR</h2>' +
         '<div class="row" style="margin:0"><img src="' + heroIcon(hero()) + '">' +
         '<div class="m"><b>' + hero().name + '</b><span>' + hero().class + ' · ' + hero().role + ' · affinity ' + (hero().affinity || hero().class) + '</span></div>' +
-        '<button data-go="squad">MANAGE</button></div></div>';
+        '<button data-go="squad">MANAGE</button></div></div>' +
+      (window.NW_STORY ? window.NW_STORY.dashCard(G.map, m.name) : '');
     wire(host());
   }
   function host() { return el("scr-dash").parentNode; }
@@ -914,6 +915,7 @@
       window.NW3D.buildArena(B.pts);
       window.NW3D.setRings(G.base.seg);
       ensureScout();
+      if (window.NW_STORY && !B.actShown) { B.actShown = true; window.NW_STORY.showIntro(G.map, map().name); }
     }
   }
 
