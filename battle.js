@@ -1595,7 +1595,7 @@
       "#build .chip.warn{border-color:rgba(255,90,90,.55);color:#ffa8a8;background:rgba(255,90,90,.1)}",
       "#build .grid{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:1px}",
       "#build .grid::-webkit-scrollbar{display:none}",
-      "#build .card{flex:0 0 96px;border:1px solid color-mix(in srgb,var(--ac) 45%,transparent);border-top:2px solid var(--ac);border-radius:10px;background:linear-gradient(160deg,color-mix(in srgb,var(--ac) 16%,transparent),rgba(6,14,17,.8));padding:6px;text-align:left;color:#cfeef2;font:inherit;overflow:hidden;transition:transform .08s}",
+      "#build .card{flex:0 0 84px;border:1px solid color-mix(in srgb,var(--ac) 45%,transparent);border-top:2px solid var(--ac);border-radius:10px;background:linear-gradient(160deg,color-mix(in srgb,var(--ac) 16%,transparent),rgba(6,14,17,.8));padding:6px;text-align:left;color:#cfeef2;font:inherit;overflow:hidden;transition:transform .08s}",
       "#build .card:active{transform:scale(.97)}",
       "#build .card .cr{display:flex;align-items:center;gap:4px;margin-bottom:2px}",
       "#build .card .ci{width:16px;height:16px;object-fit:contain;filter:drop-shadow(0 0 4px var(--ac));flex:0 0 auto}",
