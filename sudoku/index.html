@@ -31,6 +31,8 @@
   .stat b{display:block;font-size:6px;letter-spacing:.14em;color:#8f8fd0;margin-bottom:4px}
   .stat span{display:block;font-size:11px;color:#fff;text-shadow:0 0 8px rgba(77,226,255,.7)}
   .stat.warn span{color:var(--red);text-shadow:0 0 8px rgba(255,77,106,.8)}
+  .stat.hot{border-color:var(--amber)}
+  .stat.hot span{color:var(--amber);text-shadow:0 0 10px rgba(255,207,77,.9)}
   #title{position:relative;z-index:5;text-align:center;padding:6px 8px 0;font-size:9px;letter-spacing:.2em;color:var(--cyan);
     text-shadow:0 0 10px rgba(77,226,255,.8),0 2px 0 #05202b}
 
@@ -50,7 +52,7 @@
   #toast.on{opacity:1;transform:translate(-50%,-50%) scale(1)}
 
   /* ---------- controls ---------- */
-  #pad{position:relative;z-index:5;display:grid;grid-template-columns:repeat(5,1fr);gap:6px;
+  #pad{position:relative;z-index:5;display:grid;grid-template-columns:repeat(6,1fr);gap:5px;
     padding:8px 8px calc(10px + env(safe-area-inset-bottom))}
   #pad button{font-family:inherit;font-size:9px;letter-spacing:.08em;color:#dff4ff;
     background:linear-gradient(180deg,#26265e,#141438);border:2px solid #46469c;border-radius:8px;
@@ -84,6 +86,7 @@
     <div class="stat"><b>LEVEL</b><span id="hLevel">1</span></div>
     <div class="stat"><b>LINES</b><span id="hLines">0</span></div>
     <div class="stat" id="timeStat"><b>TIME</b><span id="hTime">4:00</span></div>
+    <div class="stat" id="comboStat"><b>COMBO</b><span id="hCombo">x1</span></div>
   </div>
   <div id="stage">
     <canvas id="c3d"></canvas>
@@ -97,6 +100,7 @@
     <button id="bDrop" class="go">DROP</button>
     <button id="bRight">▶</button>
     <button id="bLayer" class="ly">SLAB</button>
+    <button id="bTune" class="ly">SND OFF</button>
   </div>
   <div id="over"><div class="card">
     <h1 id="oTitle">NEON RX</h1>
@@ -177,7 +181,7 @@
   var G = {
     layers: [], given: [], val: [], conflict: [],
     slab: 0, pill: null, next: null,
-    score: 0, level: 1, lines: 0, time: 240,
+    score: 0, level: 1, lines: 0, time: 240, combo: 0, bestCombo: 0,
     running: false, over: false, dropT: 0, fall: 0,
     clearedRows: []
   };
@@ -201,6 +205,7 @@
     G.time = 240;
     G.over = false;
     if (!keepScore) { G.score = 0; G.level = 1; G.lines = 0; }
+    G.combo = 0;
     G.next = rollPill();
     spawnPill();
     syncHud();
@@ -262,6 +267,17 @@
     while (!anySpotAnywhere() && guard < 24) {
       G.pill.digits = rollPill();
       guard++;
+    }
+    /* move the player to a slab that can actually take this capsule */
+    if (!anySpot(G.pill.l)) {
+      for (var sl = 0; sl < SLABS; sl++) {
+        if (anySpot(sl)) {
+          G.slab = sl;
+          G.pill.l = sl;
+          for (var sc = 0; sc < N; sc++) { if (spotFor(sl, sc).ok) { G.pill.c = sc; break; } }
+          break;
+        }
+      }
     }
     G.next = rollPill();
     drawNext();
@@ -474,6 +490,12 @@
     document.getElementById("hLines").textContent = G.lines;
     document.getElementById("hTime").textContent = fmtTime(G.time);
     document.getElementById("layerTag").textContent = "SLAB " + (G.slab + 1);
+    var cm = document.getElementById("hCombo");
+    if (cm) {
+      var mult = 1 + Math.min(4, Math.floor(G.combo / 4));
+      cm.textContent = "x" + mult;
+      document.getElementById("comboStat").className = "stat" + (mult > 1 ? " hot" : "");
+    }
     document.getElementById("timeStat").className = "stat" + (G.time < 30 ? " warn" : "");
   }
   function drawNext() {
@@ -495,6 +517,50 @@
     t.classList.add("on");
     clearTimeout(toastT);
     toastT = setTimeout(function () { t.classList.remove("on"); }, 900);
+  }
+
+  /* ============ chiptune bed ============ */
+  var tune = { on: false, step: 0, timer: null };
+  var BASS = [0, 0, 3, 3, 5, 5, 3, 3, 7, 7, 5, 5, 3, 3, 0, 0];
+  var LEAD = [12, 15, 19, 15, 12, 19, 24, 19, 12, 15, 19, 22, 19, 15, 12, 12];
+  function noteFreq(semi) { return 110 * Math.pow(2, semi / 12); }
+  function tickTune() {
+    if (!tune.on || !G.running) return;
+    var i = tune.step % BASS.length;
+    beep(noteFreq(BASS[i]), 0.16, "square", 0.022);
+    if (tune.step % 4 === 0) beep(noteFreq(LEAD[i]), 0.1, "triangle", 0.016);
+    tune.step++;
+  }
+  function toggleTune() {
+    tune.on = !tune.on;
+    var b = document.getElementById("bTune");
+    if (b) b.textContent = tune.on ? "SND ON" : "SND OFF";
+    if (tune.on) {
+      if (tune.timer) clearInterval(tune.timer);
+      tune.timer = setInterval(tickTune, 250);
+    } else if (tune.timer) {
+      clearInterval(tune.timer);
+      tune.timer = null;
+    }
+    beep(tune.on ? 660 : 330, 0.08, "square", 0.04);
+  }
+
+  /* brief white flash across a cleared row */
+  function flashRow(l, r) {
+    for (var c = 0; c < N; c++) {
+      var mesh = cellMeshes[l][r][c];
+      if (!mesh) continue;
+      mesh.material.color.setHex(0xeafcff);
+      mesh.material.transparent = false;
+      mesh.material.opacity = 1;
+    }
+    setTimeout(function () {
+      for (var c2 = 0; c2 < N; c2++) {
+        var m2 = cellMeshes[l][r][c2];
+        if (m2 && m2.material) m2.material.color.setHex(0x1f6b52);
+      }
+      refreshBoard();
+    }, 260);
   }
 
   /* ============ input ============ */
@@ -549,10 +615,14 @@
     if (bad) {
       beep(150, 0.2, "sawtooth", 0.06);
       toast("CONFLICT", false);
+      G.combo = 0;
       G.score = Math.max(0, G.score - 25);
     } else {
-      beep(300, 0.07, "square", 0.05);
-      G.score += 20 + G.level * 2;
+      beep(300 + G.combo * 18, 0.07, "square", 0.05);
+      G.combo++;
+      if (G.combo > G.bestCombo) G.bestCombo = G.combo;
+      var mult = 1 + Math.min(4, Math.floor(G.combo / 4));
+      G.score += (20 + G.level * 2) * mult;
     }
     refreshBoard();
     scoreRows();
@@ -569,7 +639,8 @@
         if (rowComplete(l, r)) {
           G.clearedRows.push(key);
           G.lines++;
-          G.score += 250;
+          flashRow(l, r);
+          G.score += 250 * (1 + Math.min(4, Math.floor(G.combo / 4)));
           G.time = Math.min(600, G.time + 20);
           toast("LINE CLEAR +250", true);
           beep(880, 0.1, "square", 0.06);
@@ -659,6 +730,7 @@
   document.getElementById("bSwap").onclick = swap;
   document.getElementById("bDrop").onclick = drop;
   document.getElementById("bLayer").onclick = switchSlab;
+  document.getElementById("bTune").onclick = toggleTune;
   document.getElementById("oBtn").onclick = start;
 
   window.addEventListener("keydown", function (e) {
