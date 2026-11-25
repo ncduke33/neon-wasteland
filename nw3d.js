@@ -148,7 +148,7 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
     renderer.toneMapping = T.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.78;
+    renderer.toneMappingExposure = 0.60;
     /* r150 outputs sRGB by default; forcing outputEncoding here double-encoded and washed the scene out */
     if (renderer.outputColorSpace !== undefined && T.SRGBColorSpace) renderer.outputColorSpace = T.SRGBColorSpace;
     if (renderer.outputEncoding !== undefined && T.sRGBEncoding) renderer.outputEncoding = T.sRGBEncoding;
