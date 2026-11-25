@@ -66,6 +66,55 @@
     return m;
   }
 
+
+  /* ================= atmosphere: rain, haze, holo billboards ================= */
+  var NW_RAIN = null, NW_HOLO = [];
+  function buildWeather() {
+    /* rain as one points cloud, cheap and dense */
+    var count = 900, pos = new Float32Array(count * 3);
+    for (var i = 0; i < count; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 26;
+      pos[i * 3 + 1] = Math.random() * 16;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 26;
+    }
+    var geo = new T.BufferGeometry();
+    geo.setAttribute("position", new T.BufferAttribute(pos, 3));
+    var mat = new T.PointsMaterial({
+      color: 0x9fe8ff, size: 0.055, transparent: true, opacity: 0.55,
+      depthWrite: false, blending: T.AdditiveBlending
+    });
+    NW_RAIN = new T.Points(geo, mat);
+    NW_RAIN.frustumCulled = false;
+    townRoot.add(NW_RAIN);
+
+    /* holo billboards on the tallest blocks */
+    var signs = [[0x38f5e0, "NEON HAVEN"], [0xff3d8b, "SOLD OUT"], [0xffb457, "GRID RESET"], [0x7dffb0, "STAY LIT"]];
+    for (var b = 0; b < signs.length; b++) {
+      var cv = document.createElement("canvas");
+      cv.width = 256; cv.height = 96;
+      var cx = cv.getContext("2d");
+      cx.fillStyle = "rgba(4,10,14,0.85)";
+      cx.fillRect(0, 0, 256, 96);
+      cx.strokeStyle = "#" + signs[b][0].toString(16).padStart(6, "0");
+      cx.lineWidth = 5;
+      cx.strokeRect(4, 4, 248, 88);
+      cx.fillStyle = "#" + signs[b][0].toString(16).padStart(6, "0");
+      cx.font = "bold 30px monospace";
+      cx.textAlign = "center";
+      cx.textBaseline = "middle";
+      cx.fillText(signs[b][1], 128, 50);
+      var tex = new T.CanvasTexture(cv);
+      var plane = new T.Mesh(new T.PlaneGeometry(2.6, 0.98),
+        new T.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.9, side: T.DoubleSide }));
+      var ang = (b / signs.length) * Math.PI * 2;
+      plane.position.set(Math.cos(ang) * 6.4, 3.1 + (b % 2) * 0.5, Math.sin(ang) * 6.4);
+      plane.rotation.y = -ang + Math.PI / 2;
+      plane.userData.baseY = plane.position.y;
+      townRoot.add(plane);
+      NW_HOLO.push(plane);
+    }
+  }
+
   /* ================= init ================= */
   A.init = function (canvas, w, h) {
     if (!G.box) geoms();
@@ -633,6 +682,7 @@
         }
       }
     });
+    buildWeather();
     var neonM = instancer(G.box, Q.neonBox, { emissive: "self", ei: 2.4, rough: 0.35 }, 1);
     if (neonM) { townRoot.add(neonM); }
     var lampM = instancer(G.sphere, Q.lamp, { emissive: 0xffc98a, ei: 1.6, rough: 0.4 }, 1);
