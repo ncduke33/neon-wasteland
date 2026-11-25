@@ -115,6 +115,29 @@
     }
   }
 
+  /* ================= CC0 model loading ================= */
+  var propLoader = null, loadedProps = [];
+  function loadProp(url, x, z, scale, onDone) {
+    if (!T.GLTFLoader) { if (onDone) onDone(null); return; }
+    if (!propLoader) propLoader = new T.GLTFLoader();
+    propLoader.load(url, function (gltf) {
+      var obj = gltf.scene || gltf.scenes[0];
+      obj.position.set(x, 0, z);
+      var sc = scale || 1;
+      obj.scale.set(sc, sc, sc);
+      obj.traverse(function (n) {
+        if (n.isMesh && n.material) {
+          n.material.fog = true;
+          if (n.material.emissiveIntensity !== undefined) n.material.emissiveIntensity = Math.max(0.1, n.material.emissiveIntensity || 0);
+        }
+      });
+      townRoot.add(obj);
+      loadedProps.push(obj);
+      if (onDone) onDone(obj);
+    }, undefined, function () { if (onDone) onDone(null); });
+  }
+  function propCount() { return loadedProps.length; }
+
   /* ================= init ================= */
   A.init = function (canvas, w, h) {
     if (!G.box) geoms();
@@ -128,6 +151,7 @@
     renderer.toneMappingExposure = 0.78;
     /* r150 outputs sRGB by default; forcing outputEncoding here double-encoded and washed the scene out */
     if (renderer.outputColorSpace !== undefined && T.SRGBColorSpace) renderer.outputColorSpace = T.SRGBColorSpace;
+    if (renderer.outputEncoding !== undefined && T.sRGBEncoding) renderer.outputEncoding = T.sRGBEncoding;
 
     scene = new T.Scene();
     scene.background = new T.Color(0x04070d);
@@ -962,6 +986,8 @@
   };
   A.hideTown = function (on) { if (townRoot) townRoot.visible = !on; };
   A.hideCore = function (on) { if (coreGroup) coreGroup.visible = !on; };
+  A.loadProp = loadProp;
+  A.propCount = propCount;
   A.stats = function () {
     if (!A.ok) return null;
     return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, meshes: scene.children.length };
