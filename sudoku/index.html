@@ -18,7 +18,7 @@
   html,body{margin:0;height:100%;overflow:hidden;background:var(--ink);color:#eaf6ff;
     font-family:'Press Start 2P',ui-monospace,monospace;user-select:none}
   #app{position:fixed;inset:0;display:flex;flex-direction:column}
-  #scan{position:absolute;inset:0;pointer-events:none;z-index:9;opacity:.16;
+  #scan{position:absolute;inset:0;pointer-events:none;z-index:9;opacity:.05;
     background:repeating-linear-gradient(to bottom,rgba(255,255,255,.14) 0 1px,transparent 1px 3px)}
   #vig{position:absolute;inset:0;pointer-events:none;z-index:8;
     background:radial-gradient(ellipse at 50% 45%,transparent 45%,rgba(0,0,0,.55) 100%)}
@@ -243,6 +243,10 @@
     if (!G.pill) return { r: -1, ok: false };
     var r = lowestFree(l, c);
     if (r < 0) return { r: -1, ok: false };
+    /* a capsule is two cells in the SAME column, so its own two digits must
+       also differ from each other. legalAt only looks at the board, which is
+       why double digits used to drop in legal and then flag as a conflict. */
+    if (G.pill.digits[0] === G.pill.digits[1]) return { r: r, ok: false };
     var ok = legalAt(l, r, c, G.pill.digits[1]) && legalAt(l, r - 1, c, G.pill.digits[0]);
     return { r: r, ok: ok };
   }
@@ -329,15 +333,21 @@
   function digitTexture(d) {
     if (digitTex[d]) return digitTex[d];
     var cv = document.createElement("canvas");
-    cv.width = cv.height = 64;
+    cv.width = cv.height = 256;
     var x = cv.getContext("2d");
-    x.clearRect(0, 0, 64, 64);
+    x.clearRect(0, 0, 256, 256);
     x.fillStyle = "#ffffff";
-    x.font = "bold 44px 'Press Start 2P', monospace";
+    x.font = "bold 188px 'Press Start 2P', monospace";
     x.textAlign = "center"; x.textBaseline = "middle";
-    x.fillText(String(d), 32, 34);
+    x.fillText(String(d), 128, 138);
     var t = new THREE.CanvasTexture(cv);
-    t.minFilter = THREE.LinearFilter;
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.magFilter = THREE.LinearFilter;
+    t.generateMipmaps = true;
+    if (renderer && renderer.capabilities) {
+      t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    }
+    t.needsUpdate = true;
     digitTex[d] = t;
     return t;
   }
@@ -368,7 +378,7 @@
     scene.add(boardRoot);
 
     var cellGeo = new THREE.BoxGeometry(0.92, 0.16, 0.92);
-    var planeGeo = new THREE.PlaneGeometry(0.7, 0.7);
+    var planeGeo = new THREE.PlaneGeometry(0.84, 0.84);
     for (var l = 0; l < SLABS; l++) {
       cellMeshes.push([]); numMeshes.push([]); rowGlow.push([]);
       for (var r = 0; r < N; r++) {
@@ -401,7 +411,7 @@
     var colors = [PILL_A, PILL_B];
     var spot = spotFor(p.l, p.c);
     var row = spot.r >= 0 ? spot.r : 8;
-    var baseY = p.l * 1.55 + Math.max(1.4, (9 - row) * 0.55);
+    var baseY = slabY(p.l) + Math.max(1.4, (9 - row) * 0.55);
     for (var i = 0; i < 2; i++) {
       var box = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.34, 0.8),
         new THREE.MeshLambertMaterial({ color: colors[i], emissive: colors[i], emissiveIntensity: 0.45 }));
@@ -416,14 +426,26 @@
     paintPreview(row, spot.ok);
   }
 
+  /* the slab you are playing is lifted above the other two so nothing
+     sits between the camera and your numbers */
+  function slabY(l) {
+    if (l === G.slab) return 3.5;
+    var others = [];
+    for (var i = 0; i < SLABS; i++) { if (i !== G.slab) others.push(i); }
+    var k = others.indexOf(l);
+    return k === 0 ? 0.0 : 0.8;
+  }
+
   function refreshBoard() {
     markConflicts();
     for (var l = 0; l < SLABS; l++) for (var r = 0; r < N; r++) for (var c = 0; c < N; c++) {
       var v = G.val[l][r][c];
       var given = G.given[l][r][c] > 0;
       var conf = G.conflict[l][r][c];
+      cellMeshes[l][r][c].position.y = slabY(l);
+      numMeshes[l][r][c].position.y = slabY(l) + 0.1;
       var mat = cellMeshes[l][r][c].material;
-      var dim = (l !== G.slab) ? 0.55 : 1;
+      var dim = (l !== G.slab) ? 0.12 : 1;
       if (conf) mat.color.setHex(0x8a1b32);
       else if (given) mat.color.setHex(0x2b2b74);
       else if (v) mat.color.setHex(0x1f6b52);
@@ -435,7 +457,7 @@
         num.visible = true;
         num.material.map = digitTexture(v);
         num.material.color.setHex(conf ? 0xff4d6a : (given ? 0xeaf6ff : 0x7dff9b));
-        num.material.opacity = dim;
+        num.material.opacity = (l !== G.slab) ? 0.30 : 1;
         num.material.transparent = true;
       } else {
         num.visible = false;
@@ -583,7 +605,14 @@
   function switchSlab() {
     if (!G.running) return;
     G.slab = (G.slab + 1) % SLABS;
-    if (G.pill) G.pill.l = G.slab;
+    if (G.pill) {
+      G.pill.l = G.slab;
+      if (lowestFree(G.slab, G.pill.c) < 0) {
+        for (var cc = 0; cc < N; cc++) {
+          if (lowestFree(G.slab, cc) >= 0) { G.pill.c = cc; break; }
+        }
+      }
+    }
     refreshBoard(); syncHud(); placePillMesh();
     beep(420, 0.08, "sine", 0.05);
   }
@@ -671,25 +700,15 @@
     if (G.running && !G.over) {
       G.time -= dt;
       if (G.time <= 0) { G.time = 0; gameOver(); }
-      G.dropT += dt;
-      var step = 0.5 - Math.min(0.28, G.level * 0.02);
-      if (G.dropT > step && G.pill) {
-        G.dropT = 0;
-        var land = pillLanding();
-        if (land >= 0 && G.pill.y > land) {
-          G.pill.y = Math.max(land, G.pill.y - 1);
-          placePillMesh();
-        } else if (land >= 0) {
-          lockPill();
-        }
-      }
+      /* manual drop only. The capsule waits for the player to press DROP,
+         so a piece can never slam in on its own into an illegal cell. */
       if (Math.floor(ts / 250) % 2 === 0) syncHud();
     }
 
     camAngle += dt * 0.06;
     var rad = 17.5;
-    camera.position.set(Math.sin(camAngle) * rad * 0.42, 12.5, Math.cos(camAngle) * rad * 0.62 + 6.5);
-    camera.lookAt(0, 1.6, 0);
+    camera.position.set(Math.sin(camAngle) * rad * 0.16, 15.4, Math.cos(camAngle) * rad * 0.26 + 9.6);
+    camera.lookAt(0, 3.3, 0);
     renderer.render(scene, camera);
   }
 
@@ -728,6 +747,17 @@
   document.getElementById("bLeft").onclick = function () { move(-1); };
   document.getElementById("bRight").onclick = function () { move(1); };
   document.getElementById("bSwap").onclick = swap;
+  window.addEventListener("keydown", function (e) {
+    if (!G.running) {
+      if (e.key === "Enter" || e.key === " ") { start(); e.preventDefault(); }
+      return;
+    }
+    if (e.key === "ArrowLeft") { move(-1); e.preventDefault(); }
+    else if (e.key === "ArrowRight") { move(1); e.preventDefault(); }
+    else if (e.key === "ArrowDown" || e.key === " " || e.key === "Enter") { drop(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { swap(); e.preventDefault(); }
+    else if (e.key === "Tab") { switchSlab(); e.preventDefault(); }
+  });
   document.getElementById("bDrop").onclick = drop;
   document.getElementById("bLayer").onclick = switchSlab;
   document.getElementById("bTune").onclick = toggleTune;
